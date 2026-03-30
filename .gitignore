@@ -1,0 +1,29 @@
+# Environment
+.env
+
+# Tracker state (runtime, not source)
+tracker/seen_jobs.json
+tracker/tracker.pid
+tracker/*.log
+
+# Networking output
+networking_results_*.csv
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# macOS
+.DS_Store
+
+# Git worktrees
+.worktrees/
