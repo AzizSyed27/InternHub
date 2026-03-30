@@ -73,6 +73,32 @@ def test_set_and_get_last_run(tmp_db):
 
 
 # ---------------------------------------------------------------------------
+# corrupted / empty JSON
+# ---------------------------------------------------------------------------
+
+def test_load_db_handles_corrupted_json(tmp_db):
+    tmp_db.write_text("{ this is not valid json !!!")
+    result = db_module.load_db()
+    assert result == {"seen_ids": [], "last_run": {}}
+    # File should be repaired in place
+    assert tmp_db.exists()
+    repaired = json.loads(tmp_db.read_text())
+    assert repaired == {"seen_ids": [], "last_run": {}}
+
+
+def test_load_db_handles_empty_file(tmp_db):
+    tmp_db.write_text("")
+    result = db_module.load_db()
+    assert result == {"seen_ids": [], "last_run": {}}
+
+
+def test_load_db_handles_truncated_json(tmp_db):
+    tmp_db.write_text('{"seen_ids": [1, 2')
+    result = db_module.load_db()
+    assert result == {"seen_ids": [], "last_run": {}}
+
+
+# ---------------------------------------------------------------------------
 # is_seeded
 # ---------------------------------------------------------------------------
 

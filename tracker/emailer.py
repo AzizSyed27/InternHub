@@ -58,6 +58,7 @@ def _build_html(job: Job) -> str:
              .replace("<", "&lt;")
              .replace(">", "&gt;")
              .replace('"', "&quot;")
+             .replace("'", "&#39;")
         )
 
     source_colors = {

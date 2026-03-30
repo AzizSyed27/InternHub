@@ -186,7 +186,7 @@ KEYWORDS_EXCLUDE = [
     "senior",
     "staff",
     "principal",
-    "lead",
+    "lead",    # title-only check — avoids false positives on "leadership" in descriptions
     "manager",
     "director",
     "vp ",

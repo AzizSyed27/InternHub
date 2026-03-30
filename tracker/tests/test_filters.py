@@ -99,6 +99,26 @@ def test_waterloo_passes():
 # passes_filters — big_tech tier skips location check
 # ---------------------------------------------------------------------------
 
+def test_lead_with_space_excluded():
+    # "Tech Lead" and "Team Lead" should be excluded
+    assert passes_filters(_job(title="Tech Lead"), "tier1") is False
+
+
+def test_leadership_not_excluded():
+    # "leadership" in a description should NOT exclude an intern posting
+    assert passes_filters(_job(title="Software Intern", description="You will develop leadership skills."), "tier1") is True
+
+
+def test_leading_edge_not_excluded():
+    # "leading" in description should NOT exclude a posting
+    assert passes_filters(_job(title="Software Intern", description="Work on leading edge AI systems."), "tier1") is True
+
+
+def test_empty_location_fails_tier1():
+    # Empty location has no match in LOCATIONS_INCLUDE — should be excluded
+    assert passes_filters(_job(location=""), "tier1") is False
+
+
 def test_big_tech_tier_skips_location():
     # New York would normally fail, but big_tech skips location filtering
     assert passes_filters(_job(location="New York, NY"), "big_tech") is True

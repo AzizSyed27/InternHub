@@ -63,3 +63,24 @@ def test_export_blank_manual_columns(tmp_path):
     assert rows[0]["contacted"] == ""
     assert rows[0]["replied"] == ""
     assert rows[0]["notes"] == ""
+
+
+def test_export_empty_profiles_creates_header_only_file(tmp_path):
+    output_path = export_csv([], tmp_path)
+    assert Path(output_path).exists()
+    with open(output_path, newline="", encoding="utf-8") as fh:
+        rows = list(csv.DictReader(fh))
+    assert len(rows) == 0
+
+
+def test_export_handles_special_chars_in_fields(tmp_path):
+    # Fields with commas and quotes must be properly escaped in CSV
+    profile = _make_profile(
+        name='O\'Brien, "Jane"',
+        notes="Applied on 2026-03-30, waiting",
+    )
+    output_path = export_csv([profile], tmp_path)
+    with open(output_path, newline="", encoding="utf-8") as fh:
+        rows = list(csv.DictReader(fh))
+    assert rows[0]["name"] == 'O\'Brien, "Jane"'
+    assert rows[0]["notes"] == "Applied on 2026-03-30, waiting"

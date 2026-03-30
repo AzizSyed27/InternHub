@@ -24,7 +24,13 @@ def load_db() -> dict:
     if not DB_PATH.exists():
         save_db(dict(_EMPTY_DB) | {"seen_ids": [], "last_run": {}})
     with DB_PATH.open("r", encoding="utf-8") as fh:
-        return json.load(fh)
+        try:
+            return json.load(fh)
+        except json.JSONDecodeError:
+            print(f"[db] WARNING: {DB_PATH} is corrupted — resetting to empty state")
+            db = {"seen_ids": [], "last_run": {}}
+            save_db(db)
+            return db
 
 
 def save_db(db: dict) -> None:
