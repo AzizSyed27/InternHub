@@ -85,19 +85,22 @@ ANTHROPIC_MODEL = ""
 # Placeholders: [Name], [Company], [Role], [College], [University]
 # ---------------------------------------------------------------------------
 
-# LinkedIn connection request note — strict 300 character limit
+# LinkedIn connection request note — strict 300 character limit.
+# Replace [Your University] and [Your College] with your own details.
 CONNECTION_NOTE_TEMPLATE = (
-    "Hi [Name] — I'm a CS student at Ontario Tech, graduated Centennial. "
+    "Hi [Name] — I'm a CS student at [Your University], graduated [Your College]. "
     "I noticed you took a similar path and landed at [Company]. "
     "I'd love to hear your story — would you be open to connecting?"
 )
 
 # Follow-up message sent manually after connection is accepted
+# Replace [Your Name], [Your University], and [Your College] with your own details.
+# Replace [COMPANY_VALUE] automatically from company_values.json.
 FOLLOWUP_TEMPLATE = (
-    "Hi [Name], my name is Aziz Syed. I'm completing my CS degree at Ontario Tech "
-    "after graduating from Centennial College. I noticed you went from [College] to "
+    "Hi [Name], my name is [Your Name]. I'm completing my CS degree at [Your University] "
+    "after graduating from [Your College]. I noticed you went from [College] to "
     "[University] and are now a [Role] at [Company] — almost exactly the path I'm "
-    "hoping to take. After my second year at Centennial, I realized I didn't want to "
+    "hoping to take. After my time at [Your College], I realized I didn't want to "
     "work just anywhere — I want to be at [Company] because of [COMPANY_VALUE]. "
     "Given you've been in my position, what steps would you advise me to take to make "
     "that a reality? Even one piece of advice would mean a lot."
