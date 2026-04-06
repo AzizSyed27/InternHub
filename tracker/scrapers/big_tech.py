@@ -73,12 +73,25 @@ def _scrape_amazon() -> list[Job]:
             req = urllib.request.Request(url, headers=_HEADERS)
             with urllib.request.urlopen(req, timeout=15) as resp:
                 data = json.loads(resp.read().decode())
-            for hit in data.get("hits", []):
-                title = hit.get("title", "")
-                job_url = "https://www.amazon.jobs" + hit.get("job_path", "")
-                loc = hit.get("normalized_location", "") or hit.get("location", "")
-                description = hit.get("description_short", "") or ""
-                posted = hit.get("posted_date", "") or ""
+            # Amazon's CloudSearch API wraps results: {"hits": {"found": N, "hit": [...]}}
+            # Older format was {"hits": [...]}.  Handle both; skip if hits is an int/other.
+            raw_hits = data.get("hits", [])
+            if isinstance(raw_hits, dict):
+                hit_list = raw_hits.get("hit", [])
+            elif isinstance(raw_hits, list):
+                hit_list = raw_hits
+            else:
+                hit_list = []
+            for hit in hit_list:
+                # CloudSearch wraps fields under a "fields" key; flat format puts them top-level
+                fields = hit.get("fields", hit)
+                def _first(val):
+                    return val[0] if isinstance(val, list) and val else (val or "")
+                title = _first(fields.get("title", ""))
+                job_url = "https://www.amazon.jobs" + _first(fields.get("job_path", ""))
+                loc = _first(fields.get("normalized_location", "")) or _first(fields.get("location", ""))
+                description = _first(fields.get("description_short", "")) or ""
+                posted = _first(fields.get("posted_date", "")) or ""
                 job: Job = {
                     "id": make_job_id("amazon", "Amazon", title, job_url),
                     "title": title,
@@ -182,25 +195,37 @@ def _scrape_microsoft() -> list[Job]:
 
 # ---------------------------------------------------------------------------
 # Apple
-# Query-param endpoint — simpler and more stable than the POST body API.
+# Uses the internal JSON API that the Apple Jobs website calls internally.
+# Endpoint: POST https://jobs.apple.com/api/role/search
 # ---------------------------------------------------------------------------
 
 def _scrape_apple() -> list[Job]:
     jobs: list[Job] = []
+    seen_ids: set[str] = set()
+
     for location in BIG_TECH_LOCATIONS:
         try:
-            params = urllib.parse.urlencode({
-                "search": BIG_TECH_SEARCH_QUERY,
-                "sort": "relevance",
+            payload = json.dumps({
+                "query": BIG_TECH_SEARCH_QUERY,
+                "filters": {},
+                "page": 1,
+                "locale": "en-us",
                 "location": location,
-            })
-            url = f"https://jobs.apple.com/en-us/search?{params}"
-            req = urllib.request.Request(url, headers=_HEADERS)
+            }).encode()
+            req = urllib.request.Request(
+                "https://jobs.apple.com/api/role/search",
+                data=payload,
+                headers={**_HEADERS, "Content-Type": "application/json"},
+                method="POST",
+            )
             with urllib.request.urlopen(req, timeout=15) as resp:
                 data = json.loads(resp.read().decode())
             for item in data.get("searchResults", []):
                 title = item.get("postingTitle", "")
                 job_id = item.get("positionId", "")
+                if not title or not job_id or job_id in seen_ids:
+                    continue
+                seen_ids.add(job_id)
                 job_url = f"https://jobs.apple.com/en-us/details/{job_id}"
                 loc = item.get("location", {}).get("name", "") if isinstance(item.get("location"), dict) else ""
                 description = item.get("jobSummary", "") or ""

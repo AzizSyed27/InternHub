@@ -6,6 +6,8 @@
 # OPG uses a Workday-backed jobs site rendered as an SPA.
 # Playwright navigates the search page and extracts job cards.
 
+import urllib.parse
+
 from tracker.config import PUBLIC_SECTOR_ENABLED
 from tracker.filters import make_job_id, passes_filters
 from tracker.scrapers import Job
@@ -18,6 +20,7 @@ except ImportError:
 
 _SEARCH_TERMS = ["software", "technology", "student", "co-op", "intern"]
 _BASE_URL = "https://jobs.opg.com"
+_SEARCH_URL = "https://jobs.opg.com/search?q={term}"
 
 
 def scrape() -> list[Job]:
@@ -43,15 +46,14 @@ def _scrape() -> list[Job]:
 
         for term in _SEARCH_TERMS:
             try:
-                page.goto(_BASE_URL, wait_until="networkidle", timeout=30000)
+                # Navigate directly to search results — avoids interacting with the
+                # hidden search input on the home page (not visible, causes timeout).
+                page.goto(
+                    _SEARCH_URL.format(term=urllib.parse.quote(term)),
+                    wait_until="networkidle",
+                    timeout=30000,
+                )
                 page.wait_for_timeout(2000)
-
-                # Try to fill the search input
-                search_inputs = page.locator("input[type='text'], input[placeholder*='earch']").all()
-                if search_inputs:
-                    search_inputs[0].fill(term)
-                    search_inputs[0].press("Enter")
-                    page.wait_for_timeout(3000)
 
                 job_cards = page.locator("a[href*='/job/'], a[href*='/careers/']").all()
                 for card in job_cards[:20]:

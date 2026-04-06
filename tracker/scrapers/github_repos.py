@@ -16,7 +16,9 @@ from tracker.config import GITHUB_REPOS
 from tracker.filters import make_job_id, passes_filters
 from tracker.scrapers import Job
 
-_RAW_URL = "https://raw.githubusercontent.com/{repo}/main/README.md"
+# SimplifyJobs repos use 'dev' as their default branch; fall back to 'main'
+_RAW_BRANCHES = ["dev", "main"]
+_RAW_URL = "https://raw.githubusercontent.com/{repo}/{branch}/README.md"
 
 # Matches a markdown link: [text](url)
 _LINK_RE = re.compile(r"\[([^\]]*)\]\((https?://[^\)]+)\)")
@@ -33,10 +35,18 @@ def scrape() -> list[Job]:
 
 
 def _scrape_repo(repo: str) -> list[Job]:
-    url = _RAW_URL.format(repo=repo)
-    req = urllib.request.Request(url, headers={"User-Agent": "InternHub/1.0"})
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        content = resp.read().decode("utf-8", errors="replace")
+    content = None
+    for branch in _RAW_BRANCHES:
+        try:
+            url = _RAW_URL.format(repo=repo, branch=branch)
+            req = urllib.request.Request(url, headers={"User-Agent": "InternHub/1.0"})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                content = resp.read().decode("utf-8", errors="replace")
+            break  # found a valid branch
+        except Exception:
+            continue
+    if content is None:
+        raise RuntimeError(f"could not fetch README from any branch: {_RAW_BRANCHES}")
 
     jobs: list[Job] = []
     for line in content.splitlines():

@@ -2,7 +2,7 @@
 
 ## What This Project Is
 
-InternHub is a two-tool Python automation suite that runs on a Mac mini:
+InternHub is a two-tool Python automation suite that runs on a Mac:
 
 - **Tool 1 — Internship Tracker:** Monitors job sources across 4 tiers on a self-regulating schedule, deduplicates postings, and sends one email per new posting found
 - **Tool 2 — LinkedIn Networking Pipeline:** Scrapes LinkedIn alumni pages, finds professionals who went college → university → big tech, and exports a CSV with profile data and AI-generated outreach message drafts
@@ -73,41 +73,46 @@ internhub/
 
 Loop over `BIG_TECH_LOCATIONS`, make one request per location, merge and deduplicate results.
 
-| Company | Endpoint |
-|---|---|
-| Amazon | `https://www.amazon.jobs/en/search.json?base_query=software+intern&loc_query={location}` |
-| Google | `https://careers.google.com/api/jobs/jobs-v1/search/?q=software+intern&location={location}` |
-| Microsoft | `https://jobs.careers.microsoft.com/global/en/search?q=intern&lc={location}&l=en_us&pg=1&pgSz=20` |
-| Apple | `https://jobs.apple.com/api/role/search` — POST body with location, one POST per location |
-| Uber | `jobs.uber.com` — validate exact endpoint via DevTools during build |
+| Company | Endpoint | Status |
+|---|---|---|
+| Amazon | `https://www.amazon.jobs/en/search.json?base_query=software+intern&loc_query={location}` | ✅ Working |
+| Google | `https://careers.google.com/api/jobs/jobs-v1/search/?q=software+intern&location={location}` | ❌ Deprecated as of 2026-04 — no public replacement without auth |
+| Microsoft | `https://jobs.careers.microsoft.com/global/en/search?q=intern&lc={location}` | ❌ SSL hostname mismatch — re-test on different network |
+| Apple | `https://jobs.apple.com/api/role/search` (POST) | ❌ Endpoint does not exist — needs Playwright |
+| Uber | `jobs.uber.com` | ❌ Stub — validate endpoint via DevTools first |
 
 **Tier 3 — Workday ATS JSON API (stdlib only)**
 
 ```
-POST https://{company}.wd5.myworkdayjobs.com/wday/cxs/{company}/{site}/jobs
-Body: {"searchText": "software intern", "limit": 20, "offset": 0}
+POST https://{tenant}.{wd}.myworkdayjobs.com/wday/cxs/{tenant}/{site}/jobs
+Headers: Referer: https://{tenant}.{wd}.myworkdayjobs.com/{site}  (required — 422 without it)
+Body: {"searchText": "software intern", "limit": 20, "offset": 0, "appliedFacets": {}}
 ```
+
+Job URL format: `https://{tenant}.{wd}.myworkdayjobs.com/en-US/{site}{externalPath}`
+
+To add a new company: open their Workday careers page in DevTools → Network tab → find the XHR POST to `/wday/cxs/.../jobs` → extract tenant, site name, and wd cluster (wd1/wd3/wd5).
 
 **Tier 4 — Playwright (optional dependency, fail gracefully)**
 
-| Source | Scraper |
-|---|---|
-| Meta | `playwright_jobs.py` |
-| Tesla | `playwright_jobs.py` |
-| Ontario Public Service | `ontario_public.py` |
-| OPG | `opg.py` |
-| City of Toronto | `city_toronto.py` |
-| Govt Canada | `govt_canada.py` (try REST/RSS first, Playwright fallback) |
+| Source | Scraper | Notes |
+|---|---|---|
+| Meta | `playwright_jobs.py` | ✅ |
+| Tesla | `playwright_jobs.py` | ✅ |
+| Ontario Public Service | `ontario_public.py` | ✅ |
+| OPG | `opg.py` | Navigates directly to `/search?q={term}` — home page search input is CSS-hidden |
+| City of Toronto | `city_toronto.py` | ✅ |
+| Govt Canada | `govt_canada.py` | Playwright only — RSS feed (page2710) removed as of 2026-04; uses page2440 |
 
 **Community Sources (stdlib only)**
 
-| Source | Scraper |
-|---|---|
-| SimplifyJobs GitHub repos | `github_repos.py` |
-| Hacker News Who's Hiring | `hackernews.py` |
-| YC Work at a Startup | `yc.py` |
+| Source | Scraper | Notes |
+|---|---|---|
+| SimplifyJobs GitHub repos | `github_repos.py` | Uses `dev` branch, falls back to `main` |
+| Hacker News Who's Hiring | `hackernews.py` | |
+| YC Work at a Startup | `yc.py` | |
 
-### config.py
+### config.py (current state as of 2026-04)
 
 ```python
 GITHUB_REPOS = [
@@ -116,41 +121,53 @@ GITHUB_REPOS = [
 ]
 
 GREENHOUSE_COMPANIES = {
-    "Shopify": "shopify", "Cohere": "cohere44", "Wealthsimple": "wealthsimple",
-    "Ada": "ada", "Faire": "faire", "ApplyBoard": "applyboard",
-    "HubSpot": "hubspot", "Figma": "figma", "Notion": "notion",
-    "Vercel": "vercel", "Cloudflare": "cloudflare", "Reddit": "reddit",
-    "Twitch": "twitch", "Lyft": "lyft", "Airbnb": "airbnb",
-    "Coinbase": "coinbase", "MongoDB": "mongodb", "Datadog": "datadoghq",
+    # Confirmed working as of 2026-04
+    "Faire":        "faire",
+    "HubSpot":      "hubspot",
+    "Figma":        "figma",
+    "Vercel":       "vercel",
+    "Cloudflare":   "cloudflare",
+    "Reddit":       "reddit",
+    "Twitch":       "twitch",
+    "Lyft":         "lyft",
+    "Airbnb":       "airbnb",
+    "Coinbase":     "coinbase",
+    "MongoDB":      "mongodb",
+    "Anthropic":    "anthropic",
+    "Stripe":       "stripe",
+    # 404 as of 2026-04 — companies left Greenhouse or changed slugs:
+    # "Shopify", "Cohere", "Wealthsimple", "Ada", "ApplyBoard",
+    # "Notion", "Datadog", "OpenAI", "Databricks"
 }
 
 LEVER_COMPANIES = {
-    "Stripe": "stripe", "OpenAI": "openai", "Anthropic": "anthropic",
-    "Databricks": "databricks", "Scale AI": "scaleai", "Benchling": "benchling",
-    "Plaid": "plaid", "Asana": "asana", "Brex": "brex", "Rippling": "rippling",
+    # Confirmed working as of 2026-04
+    "Plaid": "plaid",
+    # 404 as of 2026-04 — moved to Greenhouse or other ATS:
+    # "Stripe" → Greenhouse, "OpenAI" → check, "Anthropic" → Greenhouse,
+    # "Databricks", "Scale AI", "Benchling", "Asana", "Brex", "Rippling"
 }
 
 WORKDAY_COMPANIES = {
-    "Netflix": ("netflix", "Netflix_External_Site"),
-    "Nvidia":  ("nvidia",  "NVIDIAExternalCareerSite"),
+    # Format: (tenant_slug, site_name, wd_cluster)
+    # Find via DevTools: POST https://{tenant}.{wd}.myworkdayjobs.com/wday/cxs/{tenant}/{site}/jobs
+    "Netflix": ("netflix", "Netflix",                "wd1"),  # confirmed 2026-04
+    "Nvidia":  ("nvidia",  "NVIDIAExternalCareerSite", "wd5"),  # confirmed 2026-04
 }
 
-# Tier 2 JSON API scrapers only (no Playwright)
 BIG_TECH_ENABLED = {
     "amazon":    True,
-    "google":    True,
-    "microsoft": True,
-    "apple":     True,
-    "uber":      True,
+    "google":    False,  # Public API deprecated — no replacement without auth
+    "microsoft": False,  # SSL hostname mismatch — re-test on different network
+    "apple":     False,  # No public JSON API — needs Playwright
+    "uber":      False,  # Stub — validate endpoint via DevTools on jobs.uber.com first
 }
 
-# Tier 4 Playwright scrapers for heavy SPAs
 PLAYWRIGHT_JOBS_ENABLED = {
     "meta":  True,
     "tesla": True,
 }
 
-# Tier 2 + Tier 3 use this — bypasses LOCATIONS_INCLUDE
 BIG_TECH_LOCATIONS = ["canada", "united states", "usa", "us", "remote"]
 BIG_TECH_SEARCH_QUERY = "software intern"
 
@@ -166,19 +183,27 @@ GOVT_CANADA_KEYWORDS = [
     "data", "technology", "IT", "information technology",
 ]
 
-# Standard filter — used by Tier 1, community, public sector
-# Tier 2 + Tier 3 bypass this and use BIG_TECH_LOCATIONS instead
 LOCATIONS_INCLUDE = [
     "canada", "toronto", "ontario", "gta", "scarborough",
     "vancouver", "montreal", "ottawa", "waterloo", "remote",
 ]
 
+# Role-level + season indicators ONLY.
+# Do NOT add tech stack keywords (backend, frontend, etc.) — they match senior full-time titles.
+# Season keywords use "20" suffix to match "Summer 2026" but not standalone "summer".
 KEYWORDS_INCLUDE = [
-    "intern", "internship", "co-op", "coop", "co op",
-    "new grad", "entry level", "junior",
-    "software engineer", "software developer", "swe",
-    "full stack", "fullstack", "backend", "front end", "frontend",
-    "mobile", "ios", "android", "data engineer", "ml engineer",
+    "intern",
+    "internship",
+    "co-op",
+    "coop",
+    "co op",
+    "new grad",
+    "entry level",
+    "junior",
+    "summer 20",
+    "fall 20",
+    "winter 20",
+    "spring 20",
 ]
 
 KEYWORDS_EXCLUDE = [
@@ -210,6 +235,13 @@ SCRAPER_INTERVALS = {
 EMAIL_SUBJECT_PREFIX = "🚀"
 ```
 
+### filters.py behaviour
+
+- `passes_filters(job, tier)` checks: applied-company, applied-public-org (public_sector tier), keyword include (title only), keyword exclude (title only), location (skipped for big_tech tier).
+- `title_lower` is used for both include and exclude checks — description is NOT checked. This avoids false positives like "intern" matching "internal" in a senior job's description body.
+- Tier 2 + Tier 3 pass `tier="big_tech"` → location check skipped; API query params handle geography.
+- Public sector scrapers pass `tier="public_sector"` → `APPLIED_PUBLIC_ORGS` checked in addition to `APPLIED_COMPANIES`.
+
 ### Location Filter Rule
 
 Tier 2 (`big_tech.py`) and Tier 3 (`workday.py`) bypass `LOCATIONS_INCLUDE`. Location filtering is handled by API query parameters using `BIG_TECH_LOCATIONS`. Only keyword and applied-company filters apply to their results.
@@ -239,6 +271,14 @@ Tier 2 (`big_tech.py`) and Tier 3 (`workday.py`) bypass `LOCATIONS_INCLUDE`. Loc
 ### Scheduling
 
 `launchd.plist` fires `main.py` every 5 minutes using absolute paths. Each scraper checks its last run time against `SCRAPER_INTERVALS` and skips if not due.
+
+**Seeding behaviour:** On first run (empty `seen_jobs.json`), all current postings are indexed without sending emails. `last_run` timestamps are NOT set during seeding — this ensures all scrapers are immediately due on the very next run, so emails fire right away.
+
+---
+
+## Next Steps
+
+- **Google Jobs scraping** — scrape `jobs.google.com` for internship listings. The old `careers.google.com` API is deprecated. Need to identify the current internal API endpoint via DevTools on `jobs.google.com` (search for "intern", capture the XHR/fetch request). Likely a Playwright scraper or a new JSON API endpoint. Add to `big_tech.py` or a new `google_jobs.py`.
 
 ---
 
@@ -320,51 +360,6 @@ ANTHROPIC_API_KEY=sk-ant-...
 
 ---
 
-## Build Order
-
-### Phase 1 — Scaffolding
-1. `.gitignore`
-2. `.env.example`
-3. `README.md` (stub)
-4. `tracker/requirements.txt`
-5. `networking/requirements.txt`
-
-### Phase 2 — Internship Tracker
-6. `tracker/config.py`
-7. `tracker/filters.py`
-8. `tracker/db.py`
-9. `tracker/scrapers/__init__.py`
-10. `tracker/scrapers/github_repos.py`
-11. `tracker/scrapers/greenhouse.py`
-12. `tracker/scrapers/lever.py`
-13. `tracker/scrapers/big_tech.py` — Amazon, Google, Microsoft, Apple, Uber
-14. `tracker/scrapers/workday.py` — Netflix, Nvidia
-15. `tracker/scrapers/hackernews.py`
-16. `tracker/scrapers/yc.py`
-17. `tracker/scrapers/playwright_jobs.py` — Meta, Tesla
-18. `tracker/scrapers/govt_canada.py`
-19. `tracker/scrapers/ontario_public.py`
-20. `tracker/scrapers/opg.py`
-21. `tracker/scrapers/city_toronto.py`
-22. `tracker/emailer.py`
-23. `tracker/main.py`
-24. `tracker/launchd.plist`
-
-### Phase 3 — LinkedIn Networking Pipeline
-25. `networking/config.py`
-26. `networking/company_values.json`
-27. `networking/profile_parser.py`
-28. `networking/message_generator.py`
-29. `networking/csv_exporter.py`
-30. `networking/linkedin_scraper.py`
-31. `networking/main.py`
-
-### Phase 4 — Polish
-32. `README.md` — full setup, usage guide, screenshots section
-33. Final review pass
-
----
-
 ## Key Decisions
 
 - **One email per posting** — not a digest. Subject: `🚀 Company — Title (Location)`
@@ -372,15 +367,23 @@ ANTHROPIC_API_KEY=sk-ant-...
 - **Tier 2 + Tier 3 bypass `LOCATIONS_INCLUDE`** — use `BIG_TECH_LOCATIONS` via API query params
 - **`BIG_TECH_ENABLED` = Tier 2 JSON API scrapers only** (Amazon, Google, Microsoft, Apple, Uber)
 - **`PLAYWRIGHT_JOBS_ENABLED` = Meta + Tesla only** — separate from BIG_TECH_ENABLED
-- **Tier 1–3 are stdlib only** — zero pip installs
+- **Tier 1–3 are stdlib only** — zero pip installs (except certifi for macOS SSL)
 - **Playwright is optional** — Tier 4 scrapers skip gracefully if not installed
 - **No LinkedIn automated messaging** — find and log only, all outreach manual
 - **MD5 deduplication** — hash of source+company+title+url
 - **No database** — JSON for tracker state, CSV for networking output
-- **No GitHub Actions** — runs locally on Mac mini via launchd
+- **No GitHub Actions** — runs locally on Mac via launchd
 - **No web UI** — CLI only for v1
 - **seen_jobs.json excluded from git**
 - **Open source** — no personal details in logic files, everything in config.py or .env
+- **KEYWORDS_INCLUDE = role-level only** — no tech stack terms (backend, frontend, etc.) to avoid matching senior full-time job titles
+- **Keyword include checks title only** — not description, to prevent "intern" matching "internal" in a senior job's description
+- **Seed run does not set last_run timestamps** — ensures all scrapers are immediately due on the first real run after seeding
+- **macOS SSL** — `certifi` added to requirements; `main.py` patches `ssl._create_default_https_context` on startup
+- **SimplifyJobs repos use `dev` branch** — `github_repos.py` tries `dev` first, falls back to `main`
+- **Workday URL format** — job links require `/en-US/{site}` prefix before `externalPath`; Referer header and `appliedFacets: {}` in POST body are required
+- **OPG search** — home page search input is CSS-hidden; scraper navigates directly to `/search?q={term}`
+- **Govt Canada** — RSS feed (page2710) removed as of 2026-04; scraper uses Playwright on page2440
 
 ---
 

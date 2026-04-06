@@ -4,14 +4,15 @@
 # This is the same endpoint Workday career pages use internally — no auth required.
 #
 # Endpoint pattern:
-#   POST https://{tenant}.wd5.myworkdayjobs.com/wday/cxs/{tenant}/{site}/jobs
-#   Body: {"searchText": "software intern", "limit": 20, "offset": 0}
+#   POST https://{tenant}.{wd}.myworkdayjobs.com/wday/cxs/{tenant}/{site}/jobs
+#   Body: {"searchText": "software intern", "limit": 20, "offset": 0, "appliedFacets": {}}
+#   Referer: https://{tenant}.{wd}.myworkdayjobs.com/{site}  (required — Workday rejects without it)
 #
 # To add a new company:
 #   1. Open their Workday careers page in DevTools → Network tab
 #   2. Find the XHR POST request to /wday/cxs/.../jobs
-#   3. Extract the tenant slug and site name from the URL
-#   4. Add them to WORKDAY_COMPANIES in config.py
+#   3. Extract the tenant slug, site name, and wd cluster (wd1/wd3/wd5) from the URL
+#   4. Add them to WORKDAY_COMPANIES in config.py as (tenant, site, wd_cluster)
 
 import json
 import urllib.request
@@ -20,25 +21,28 @@ from tracker.config import BIG_TECH_SEARCH_QUERY, WORKDAY_COMPANIES
 from tracker.filters import make_job_id, passes_filters
 from tracker.scrapers import Job
 
-_API_PATTERN = "https://{tenant}.wd5.myworkdayjobs.com/wday/cxs/{tenant}/{site}/jobs"
+_API_PATTERN     = "https://{tenant}.{wd}.myworkdayjobs.com/wday/cxs/{tenant}/{site}/jobs"
+_REFERER_PATTERN = "https://{tenant}.{wd}.myworkdayjobs.com/{site}"
 
 
 def scrape() -> list[Job]:
     jobs: list[Job] = []
-    for company_name, (tenant, site) in WORKDAY_COMPANIES.items():
+    for company_name, (tenant, site, wd) in WORKDAY_COMPANIES.items():
         try:
-            jobs.extend(_scrape_company(company_name, tenant, site))
+            jobs.extend(_scrape_company(company_name, tenant, site, wd))
         except Exception as exc:
             print(f"[workday] WARNING: failed to scrape {company_name}: {exc}")
     return jobs
 
 
-def _scrape_company(company_name: str, tenant: str, site: str) -> list[Job]:
-    url = _API_PATTERN.format(tenant=tenant, site=site)
+def _scrape_company(company_name: str, tenant: str, site: str, wd: str) -> list[Job]:
+    url = _API_PATTERN.format(tenant=tenant, site=site, wd=wd)
+    referer = _REFERER_PATTERN.format(tenant=tenant, site=site, wd=wd)
     payload = json.dumps({
         "searchText": BIG_TECH_SEARCH_QUERY,
         "limit": 20,
         "offset": 0,
+        "appliedFacets": {},  # required by Workday CXS API — omitting it causes 422
     }).encode()
     req = urllib.request.Request(
         url,
@@ -47,6 +51,7 @@ def _scrape_company(company_name: str, tenant: str, site: str) -> list[Job]:
             "Content-Type": "application/json",
             "User-Agent": "InternHub/1.0",
             "Accept": "application/json",
+            "Referer": referer,  # Workday validates this — missing causes 422
         },
         method="POST",
     )
@@ -56,9 +61,8 @@ def _scrape_company(company_name: str, tenant: str, site: str) -> list[Job]:
     jobs: list[Job] = []
     for posting in data.get("jobPostings", []):
         title = posting.get("title", "")
-        # externalPath is a relative path like /en/job/R12345
         path = posting.get("externalPath", "")
-        job_url = f"https://{tenant}.wd5.myworkdayjobs.com{path}" if path else ""
+        job_url = f"https://{tenant}.{wd}.myworkdayjobs.com/en-US/{site}{path}" if path else ""
         loc_obj = posting.get("locationsText", "") or posting.get("primaryLocation", "") or ""
         location = loc_obj if isinstance(loc_obj, str) else ""
         posted = posting.get("postedOn", "") or ""

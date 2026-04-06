@@ -23,15 +23,11 @@ GITHUB_REPOS = [
 # Find a company's slug at: boards.greenhouse.io/{slug}
 # ---------------------------------------------------------------------------
 GREENHOUSE_COMPANIES = {
-    "Shopify":      "shopify",
-    "Cohere":       "cohere44",
-    "Wealthsimple": "wealthsimple",
-    "Ada":          "ada",
+    # Verify slugs at: boards.greenhouse.io/{slug}
+    # Remove or update any that return 404 — companies switch ATS over time.
     "Faire":        "faire",
-    "ApplyBoard":   "applyboard",
     "HubSpot":      "hubspot",
     "Figma":        "figma",
-    "Notion":       "notion",
     "Vercel":       "vercel",
     "Cloudflare":   "cloudflare",
     "Reddit":       "reddit",
@@ -40,7 +36,18 @@ GREENHOUSE_COMPANIES = {
     "Airbnb":       "airbnb",
     "Coinbase":     "coinbase",
     "MongoDB":      "mongodb",
-    "Datadog":      "datadoghq",
+    "Anthropic":    "anthropic",   # confirmed 2026-04
+    "Stripe":       "stripe",      # confirmed 2026-04
+    # --- 404 as of 2026-04 — slug changed or company left Greenhouse ---
+    # "Shopify":      "shopify",       # check boards.greenhouse.io/shopify
+    # "Cohere":       "cohere44",      # verify slug
+    # "Wealthsimple": "wealthsimple",  # verify slug
+    # "Ada":          "ada",           # verify slug
+    # "ApplyBoard":   "applyboard",    # verify slug
+    # "Notion":       "notion",        # verify slug
+    # "Datadog":      "datadoghq",     # verify slug
+    # "OpenAI":       "openai",        # 404 on Greenhouse; check their jobs page
+    # "Databricks":   "databricks",    # 404 on Greenhouse; check their jobs page
 }
 
 # ---------------------------------------------------------------------------
@@ -49,16 +56,19 @@ GREENHOUSE_COMPANIES = {
 # Find a company's slug at: jobs.lever.co/{slug}
 # ---------------------------------------------------------------------------
 LEVER_COMPANIES = {
-    "Stripe":     "stripe",
-    "OpenAI":     "openai",
-    "Anthropic":  "anthropic",
-    "Databricks": "databricks",
-    "Scale AI":   "scaleai",
-    "Benchling":  "benchling",
+    # Verify slugs at: jobs.lever.co/{slug}
+    # Remove or update any that return 404 — companies switch ATS over time.
     "Plaid":      "plaid",
-    "Asana":      "asana",
-    "Brex":       "brex",
-    "Rippling":   "rippling",
+    # --- 404 as of 2026-04 — likely moved to Greenhouse or another ATS ---
+    # "Stripe":     "stripe",      # likely moved to Greenhouse: boards.greenhouse.io/stripe
+    # "OpenAI":     "openai",      # likely moved to Greenhouse: boards.greenhouse.io/openai
+    # "Anthropic":  "anthropic",   # likely moved to Greenhouse: boards.greenhouse.io/anthropic
+    # "Databricks": "databricks",  # verify on jobs.lever.co/databricks
+    # "Scale AI":   "scaleai",     # verify on jobs.lever.co/scaleai
+    # "Benchling":  "benchling",   # verify on jobs.lever.co/benchling
+    # "Asana":      "asana",       # verify on jobs.lever.co/asana
+    # "Brex":       "brex",        # verify on jobs.lever.co/brex
+    # "Rippling":   "rippling",    # verify on jobs.lever.co/rippling
 }
 
 # ---------------------------------------------------------------------------
@@ -68,8 +78,10 @@ LEVER_COMPANIES = {
 #   POST https://{tenant}.wd5.myworkdayjobs.com/wday/cxs/{tenant}/{site}/jobs
 # ---------------------------------------------------------------------------
 WORKDAY_COMPANIES = {
-    "Netflix": ("netflix", "Netflix_External_Site"),
-    "Nvidia":  ("nvidia",  "NVIDIAExternalCareerSite"),
+    # Format: (tenant_slug, site_name, wd_cluster)
+    # Find via DevTools: POST https://{tenant}.{wd}.myworkdayjobs.com/wday/cxs/{tenant}/{site}/jobs
+    "Netflix": ("netflix", "Netflix",                "wd1"),  # confirmed 2026-04
+    "Nvidia":  ("nvidia",  "NVIDIAExternalCareerSite", "wd5"),  # confirmed 2026-04
 }
 
 # ---------------------------------------------------------------------------
@@ -78,10 +90,10 @@ WORKDAY_COMPANIES = {
 # ---------------------------------------------------------------------------
 BIG_TECH_ENABLED = {
     "amazon":    True,
-    "google":    True,
-    "microsoft": True,
-    "apple":     True,
-    "uber":      True,   # NOTE: Uber is stubbed — validate endpoint via DevTools first
+    "google":    False,  # Public API deprecated as of 2026-04 — no replacement without authentication
+    "microsoft": False,  # SSL hostname mismatch — re-test on a different network; endpoint may have changed
+    "apple":     False,  # No public JSON API — jobs.apple.com/api/role/search does not exist; use Playwright instead
+    "uber":      False,  # Stub — validate endpoint via DevTools on jobs.uber.com first
 }
 
 # ---------------------------------------------------------------------------
@@ -161,19 +173,10 @@ KEYWORDS_INCLUDE = [
     "new grad",
     "entry level",
     "junior",
-    "software engineer",
-    "software developer",
-    "swe",
-    "full stack",
-    "fullstack",
-    "backend",
-    "front end",
-    "frontend",
-    "mobile",
-    "ios",
-    "android",
-    "data engineer",
-    "ml engineer",
+    "summer 20",   # matches "Summer 2026/2027" but not standalone "summer"
+    "fall 20",     # matches "Fall 2026/2027" but not "fallback" or "shortfall"
+    "winter 20",   # matches "Winter 2026/2027"
+    "spring 20",   # matches "Spring 2026/2027" but not "offspring" or "springboard"
 ]
 
 # ---------------------------------------------------------------------------

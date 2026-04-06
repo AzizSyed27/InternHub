@@ -14,6 +14,17 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Ensure the repo root is on sys.path so `tracker.*` imports resolve
+# regardless of how this script is invoked (direct script, launchd, etc.)
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# macOS Python (python.org installer) ships without CA certificates and can't
+# verify HTTPS connections out of the box.  Patching the default SSL context
+# to use certifi's bundle fixes SSL errors for all urllib requests globally.
+import ssl
+import certifi
+ssl._create_default_https_context = lambda: ssl.create_default_context(cafile=certifi.where())
+
 # Load .env before anything else
 from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent.parent / ".env")
@@ -140,7 +151,8 @@ def main() -> None:
                         if db.is_new(job["id"]):
                             db.mark_seen(job["id"])
                             new_count += 1
-                    db.set_last_run(name)
+                    # Do NOT call db.set_last_run(name) here —
+                    # leaving last_run unset ensures all scrapers are due on the next run.
                 except Exception as exc:
                     print(f"[main] WARNING: {name} failed during seed: {exc}")
             print(f"[main] Seed complete. {new_count} postings indexed. Run again to start receiving emails.")

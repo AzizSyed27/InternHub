@@ -6,7 +6,7 @@
 # The OPS job board is a server-rendered page with a searchable listing.
 # Playwright is used to navigate and extract job cards.
 
-from tracker.config import GOVT_CANADA_KEYWORDS, PUBLIC_SECTOR_ENABLED
+from tracker.config import PUBLIC_SECTOR_ENABLED
 from tracker.filters import make_job_id, passes_filters
 from tracker.scrapers import Job
 

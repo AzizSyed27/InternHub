@@ -7,6 +7,7 @@ import hashlib
 
 from tracker.config import (
     APPLIED_COMPANIES,
+    APPLIED_PUBLIC_ORGS,
     KEYWORDS_EXCLUDE,
     KEYWORDS_INCLUDE,
     LOCATIONS_INCLUDE,
@@ -40,8 +41,12 @@ def passes_filters(job: Job, tier: str) -> bool:
     if job["company"] in APPLIED_COMPANIES:
         return False
 
+    # --- Applied public org check (public_sector tier only) ---
+    if tier == "public_sector" and job["company"] in APPLIED_PUBLIC_ORGS:
+        return False
+
     # --- Keyword include check — title OR description (all tiers) ---
-    if not any(kw.lower() in title_desc for kw in KEYWORDS_INCLUDE):
+    if not any(kw.lower() in title_lower for kw in KEYWORDS_INCLUDE):
         return False
 
     # --- Keyword exclude check — title ONLY (all tiers) ---
