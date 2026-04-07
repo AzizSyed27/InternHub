@@ -239,8 +239,3 @@ internhub/
 
 ---
 
-## Contributing
-
-Pull requests are welcome. Please keep all user-specific configuration in `config.py` and `.env` — no personal details in logic files.
-
-Issues: [github.com/YOUR_USERNAME/internhub/issues](https://github.com/azizsyed27/internhub/issues)

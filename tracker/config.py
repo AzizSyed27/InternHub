@@ -14,7 +14,7 @@
 # ---------------------------------------------------------------------------
 GITHUB_REPOS = [
     "SimplifyJobs/Summer2026-Internships",
-    "SimplifyJobs/New-Grad-Positions",
+    #"SimplifyJobs/New-Grad-Positions",
 ]
 
 # ---------------------------------------------------------------------------
@@ -104,6 +104,7 @@ BIG_TECH_ENABLED = {
 PLAYWRIGHT_JOBS_ENABLED = {
     "meta":  True,
     "tesla": True,
+    "yc":    True,
 }
 
 # ---------------------------------------------------------------------------
@@ -170,9 +171,9 @@ KEYWORDS_INCLUDE = [
     "co-op",
     "coop",
     "co op",
-    "new grad",
-    "entry level",
-    "junior",
+    #"new grad",
+   # "entry level",
+    #"junior",
     "summer 20",   # matches "Summer 2026/2027" but not standalone "summer"
     "fall 20",     # matches "Fall 2026/2027" but not "fallback" or "shortfall"
     "winter 20",   # matches "Winter 2026/2027"

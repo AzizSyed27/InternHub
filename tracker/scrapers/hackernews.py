@@ -28,11 +28,21 @@ _HTML_TAG_RE = re.compile(r"<[^>]+>")
 
 
 def scrape() -> list[Job]:
-    story_id = _find_hiring_story_id()
+    try:
+        story_id = _find_hiring_story_id()
+    except Exception as exc:
+        print(f"[hackernews] WARNING: failed to find Who is Hiring thread: {exc}")
+        return []
+
     if not story_id:
         print("[hackernews] WARNING: could not find current Who is Hiring thread")
         return []
-    return _parse_story(story_id)
+
+    try:
+        return _parse_story(story_id)
+    except Exception as exc:
+        print(f"[hackernews] WARNING: failed to parse story {story_id}: {exc}")
+        return []
 
 
 def _find_hiring_story_id() -> str | None:

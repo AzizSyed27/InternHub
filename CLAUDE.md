@@ -103,21 +103,21 @@ To add a new company: open their Workday careers page in DevTools → Network ta
 | OPG | `opg.py` | Navigates directly to `/search?q={term}` — home page search input is CSS-hidden |
 | City of Toronto | `city_toronto.py` | ✅ |
 | Govt Canada | `govt_canada.py` | Playwright only — RSS feed (page2710) removed as of 2026-04; uses page2440 |
+| YC Work at a Startup | `yc.py` | Playwright only — `/jobs.json` endpoint returned HTTP 500 as of 2026-04; navigates `workatastartup.com/jobs?q=intern` |
 
 **Community Sources (stdlib only)**
 
 | Source | Scraper | Notes |
 |---|---|---|
-| SimplifyJobs GitHub repos | `github_repos.py` | Uses `dev` branch, falls back to `main` |
+| SimplifyJobs GitHub repos | `github_repos.py` | Uses `dev` branch, falls back to `main`; HTML `<table>` parser (switched from markdown pipe tables 2026-04); `New-Grad-Positions` currently disabled |
 | Hacker News Who's Hiring | `hackernews.py` | |
-| YC Work at a Startup | `yc.py` | |
 
 ### config.py (current state as of 2026-04)
 
 ```python
 GITHUB_REPOS = [
     "SimplifyJobs/Summer2026-Internships",
-    "SimplifyJobs/New-Grad-Positions",
+    # "SimplifyJobs/New-Grad-Positions",  # disabled — intern-only mode
 ]
 
 GREENHOUSE_COMPANIES = {
@@ -166,6 +166,7 @@ BIG_TECH_ENABLED = {
 PLAYWRIGHT_JOBS_ENABLED = {
     "meta":  True,
     "tesla": True,
+    "yc":    True,
 }
 
 BIG_TECH_LOCATIONS = ["canada", "united states", "usa", "us", "remote"]
@@ -197,9 +198,9 @@ KEYWORDS_INCLUDE = [
     "co-op",
     "coop",
     "co op",
-    "new grad",
-    "entry level",
-    "junior",
+    # "new grad",     # disabled — intern-only mode
+    # "entry level",  # disabled — intern-only mode
+    # "junior",       # disabled — intern-only mode
     "summer 20",
     "fall 20",
     "winter 20",
@@ -237,9 +238,10 @@ EMAIL_SUBJECT_PREFIX = "🚀"
 
 ### filters.py behaviour
 
-- `passes_filters(job, tier)` checks: applied-company, applied-public-org (public_sector tier), keyword include (title only), keyword exclude (title only), location (skipped for big_tech tier).
+- `passes_filters(job, tier)` checks: applied-company, applied-public-org (public_sector tier), keyword include (title only), keyword exclude (title only), location (skipped for big_tech and github tiers).
 - `title_lower` is used for both include and exclude checks — description is NOT checked. This avoids false positives like "intern" matching "internal" in a senior job's description body.
 - Tier 2 + Tier 3 pass `tier="big_tech"` → location check skipped; API query params handle geography.
+- GitHub scraper passes `tier="github"` → location check also skipped; SimplifyJobs is a curated global list and filtering by city would drop valid remote/US postings.
 - Public sector scrapers pass `tier="public_sector"` → `APPLIED_PUBLIC_ORGS` checked in addition to `APPLIED_COMPANIES`.
 
 ### Location Filter Rule
@@ -273,6 +275,28 @@ Tier 2 (`big_tech.py`) and Tier 3 (`workday.py`) bypass `LOCATIONS_INCLUDE`. Loc
 `launchd.plist` fires `main.py` every 5 minutes using absolute paths. Each scraper checks its last run time against `SCRAPER_INTERVALS` and skips if not due.
 
 **Seeding behaviour:** On first run (empty `seen_jobs.json`), all current postings are indexed without sending emails. `last_run` timestamps are NOT set during seeding — this ensures all scrapers are immediately due on the very next run, so emails fire right away.
+
+---
+
+## Scraper Health Watchlist
+
+These scrapers parse HTML or DOM structure directly and are most likely to break silently if the source site changes its layout. Check these first if a scraper suddenly returns 0 results.
+
+| Scraper | File | Risk | Last verified |
+|---|---|---|---|
+| SimplifyJobs repos | `github_repos.py` | Switched markdown→HTML tables 2026-04 (fixed). Could change again. | 2026-04 |
+| Hacker News Who's Hiring | `hackernews.py` | Parses HN comment HTML. HN rarely changes layout, but format shift = silent 0 results. | — |
+| YC Work at a Startup | `yc.py` | Already broke once (HTTP 500 on `/jobs.json` 2026-04). Now Playwright on `workatastartup.com/jobs`. CSS selectors could break on redesign. | 2026-04 |
+| Meta careers | `playwright_jobs.py` | Playwright CSS selectors. Meta redesigns career pages. | — |
+| Tesla careers | `playwright_jobs.py` | Playwright CSS selectors. Tesla career pages change frequently. | — |
+| Govt Canada | `govt_canada.py` | Already broke once (RSS page2710 removed 2026-04). Now Playwright on page2440. | 2026-04 |
+| Ontario Public Service | `ontario_public.py` | Playwright CSS selectors on OPS careers portal. | — |
+| OPG | `opg.py` | Playwright, navigates directly to `/search?q=` (home search is CSS-hidden). | — |
+| City of Toronto | `city_toronto.py` | Playwright CSS selectors on city portal. | — |
+
+**How to spot a broken scraper:** It runs without error but returns 0 results — or far fewer than usual. Add a `print(f"[scraper_name] {len(jobs)} jobs found")` and run the scraper manually to check.
+
+**JSON API scrapers (lower risk):** Greenhouse, Lever, Workday — these return structured JSON. A breaking change usually produces an HTTP error or schema mismatch, not silent 0 results.
 
 ---
 
@@ -366,8 +390,8 @@ ANTHROPIC_API_KEY=sk-ant-...
 - **launchd fires every 5 min** — each scraper self-regulates via `SCRAPER_INTERVALS`
 - **Tier 2 + Tier 3 bypass `LOCATIONS_INCLUDE`** — use `BIG_TECH_LOCATIONS` via API query params
 - **`BIG_TECH_ENABLED` = Tier 2 JSON API scrapers only** (Amazon, Google, Microsoft, Apple, Uber)
-- **`PLAYWRIGHT_JOBS_ENABLED` = Meta + Tesla only** — separate from BIG_TECH_ENABLED
-- **Tier 1–3 are stdlib only** — zero pip installs (except certifi for macOS SSL)
+- **`PLAYWRIGHT_JOBS_ENABLED` = Meta, Tesla, YC** — separate from BIG_TECH_ENABLED
+- **Tier 1–3 are stdlib only** — zero pip installs (except certifi for macOS SSL); YC moved from Tier 3 to Tier 4 (Playwright) in 2026-04 when `/jobs.json` was deprecated
 - **Playwright is optional** — Tier 4 scrapers skip gracefully if not installed
 - **No LinkedIn automated messaging** — find and log only, all outreach manual
 - **MD5 deduplication** — hash of source+company+title+url
@@ -383,7 +407,12 @@ ANTHROPIC_API_KEY=sk-ant-...
 - **SimplifyJobs repos use `dev` branch** — `github_repos.py` tries `dev` first, falls back to `main`
 - **Workday URL format** — job links require `/en-US/{site}` prefix before `externalPath`; Referer header and `appliedFacets: {}` in POST body are required
 - **OPG search** — home page search input is CSS-hidden; scraper navigates directly to `/search?q={term}`
-- **Govt Canada** — RSS feed (page2710) removed as of 2026-04; scraper uses Playwright on page2440
+- **Govt Canada** — RSS feed (page2710) removed as of 2026-04; scraper uses Playwright on page2440; uses `urllib.parse.quote` (NOT `urllib.request.quote` — that module has no `quote` function)
+- **YC Work at a Startup** — `/jobs.json` endpoint returned HTTP 500 as of 2026-04; converted to Playwright scraper navigating `workatastartup.com/jobs?q=intern`; gated by `PLAYWRIGHT_JOBS_ENABLED["yc"]`
+- **`github_repos.py` uses `html.parser`** — SimplifyJobs switched README format from markdown pipe tables to HTML `<table>` in 2026-04; parser rewritten using stdlib `html.parser`; no new dependencies
+- **`"github"` tier bypasses location filter** — same mechanism as `"big_tech"` tier; SimplifyJobs is a curated global list so location filtering would drop valid US/remote postings
+- **SimplifyJobs company names may have emoji prefixes** — FAANG-tier companies are tagged `🔥, Cloudflare` in the HTML; `APPLIED_COMPANIES` entries must match the exact parsed string; workaround is to rely on Greenhouse/Lever/Workday scrapers for those companies instead
+- **New-Grad-Positions disabled** — `SimplifyJobs/New-Grad-Positions` commented out of `GITHUB_REPOS` as of 2026-04; re-enable to include new-grad roles
 
 ---
 

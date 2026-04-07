@@ -32,10 +32,12 @@ def passes_filters(job: Job, tier: str) -> bool:
                         Tier 2 and Tier 3 scrapers pass location via API query
                         parameters instead, so client-side location filtering
                         would double-filter and drop valid results.
+    tier="github"    → same as big_tech (no location check). SimplifyJobs repos
+                        are already curated lists; location filtering would drop
+                        valid postings that list US cities instead of "remote".
     all other tiers  → keyword check + location check + applied-company check.
     """
     title_lower = job["title"].lower()
-    title_desc = (job["title"] + " " + job["description"]).lower()
 
     # --- Applied-company check (all tiers) ---
     if job["company"] in APPLIED_COMPANIES:
@@ -45,7 +47,7 @@ def passes_filters(job: Job, tier: str) -> bool:
     if tier == "public_sector" and job["company"] in APPLIED_PUBLIC_ORGS:
         return False
 
-    # --- Keyword include check — title OR description (all tiers) ---
+    # --- Keyword include check — title only (all tiers) ---
     if not any(kw.lower() in title_lower for kw in KEYWORDS_INCLUDE):
         return False
 
@@ -56,8 +58,8 @@ def passes_filters(job: Job, tier: str) -> bool:
     if any(kw.lower() in title_lower for kw in KEYWORDS_EXCLUDE):
         return False
 
-    # --- Location check (skipped for big_tech tier) ---
-    if tier != "big_tech":
+    # --- Location check (skipped for big_tech and github tiers) ---
+    if tier not in ("big_tech", "github"):
         location = job["location"].lower()
         if not any(loc.lower() in location for loc in LOCATIONS_INCLUDE):
             return False

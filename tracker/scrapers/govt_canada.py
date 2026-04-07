@@ -6,6 +6,7 @@
 #
 # Requires: pip install playwright && playwright install chromium
 
+import urllib.parse
 import urllib.request
 
 from tracker.config import GOVT_CANADA_KEYWORDS, PUBLIC_SECTOR_ENABLED
@@ -50,7 +51,7 @@ def _scrape_playwright() -> list[Job]:
         for keyword in GOVT_CANADA_KEYWORDS:
             try:
                 page.goto(
-                    _GC_JOBS_SEARCH.format(keyword=urllib.request.quote(keyword)),
+                    _GC_JOBS_SEARCH.format(keyword=urllib.parse.quote(keyword)),
                     wait_until="networkidle",
                     timeout=30000,
                 )
