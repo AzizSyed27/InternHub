@@ -1,10 +1,13 @@
 # tracker/scrapers/city_toronto.py
 #
 # Scrapes City of Toronto job listings via Playwright.
-# URL: https://www.toronto.ca/city-government/jobs-at-the-city/current-job-opportunities/
 #
-# The City of Toronto jobs page lists postings in an HTML table.
-# Playwright navigates the page and extracts job rows.
+# Old URL (404 as of 2026-04):
+#   https://www.toronto.ca/city-government/jobs-at-the-city/current-job-opportunities/
+# New URL (confirmed 2026-04):
+#   https://jobs.toronto.ca/jobsatcity/search/?q=intern&location=toronto
+#
+# Job links are at a[href*='/job/'] relative to jobs.toronto.ca.
 
 from tracker.config import PUBLIC_SECTOR_ENABLED
 from tracker.filters import make_job_id, passes_filters
@@ -16,7 +19,8 @@ try:
 except ImportError:
     PLAYWRIGHT_AVAILABLE = False
 
-_JOBS_URL = "https://www.toronto.ca/city-government/jobs-at-the-city/current-job-opportunities/"
+_JOBS_URL = "https://jobs.toronto.ca/jobsatcity/search/?q=intern&location=toronto"
+_BASE_URL = "https://jobs.toronto.ca"
 
 
 def scrape() -> list[Job]:
@@ -42,8 +46,7 @@ def _scrape() -> list[Job]:
         page.goto(_JOBS_URL, wait_until="networkidle", timeout=30000)
         page.wait_for_timeout(2000)
 
-        # Job listings are inside a table or a list of links
-        job_links = page.locator("table a, .job-listing a, .views-row a").all()
+        job_links = page.locator("a[href*='/job/']").all()
 
         for link_el in job_links[:60]:
             try:
@@ -52,7 +55,7 @@ def _scrape() -> list[Job]:
                 if not title or not href or href in seen_urls:
                     continue
                 if not href.startswith("http"):
-                    href = "https://www.toronto.ca" + href
+                    href = _BASE_URL + href
                 seen_urls.add(href)
 
                 job: Job = {

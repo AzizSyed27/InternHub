@@ -97,13 +97,13 @@ To add a new company: open their Workday careers page in DevTools → Network ta
 
 | Source | Scraper | Notes |
 |---|---|---|
-| Meta | `playwright_jobs.py` | ✅ |
-| Tesla | `playwright_jobs.py` | ✅ |
-| Ontario Public Service | `ontario_public.py` | ✅ |
-| OPG | `opg.py` | Navigates directly to `/search?q={term}` — home page search input is CSS-hidden |
-| City of Toronto | `city_toronto.py` | ✅ |
-| Govt Canada | `govt_canada.py` | Playwright only — RSS feed (page2710) removed as of 2026-04; uses page2440 |
-| YC Work at a Startup | `yc.py` | Playwright only — `/jobs.json` endpoint returned HTTP 500 as of 2026-04; navigates `workatastartup.com/jobs?q=intern` |
+| Meta | `playwright_jobs.py` | ✅ Rewrote 2026-04: now intercepts GraphQL response at `/graphql` (old CSS selector broke on SPA redesign) |
+| Tesla | `playwright_jobs.py` | ❌ Disabled 2026-04 — Cloudflare blocks headless Chromium (Access Denied). No public API found. |
+| Ontario Public Service | `ontario_public.py` | ❌ Disabled 2026-04 — old URL 404; new portal (gojobs.gov.on.ca) uses Radware CAPTCHA |
+| OPG | `opg.py` | ✅ Navigates directly to `/search?q={term}` — home page search input is CSS-hidden |
+| City of Toronto | `city_toronto.py` | ✅ Updated URL 2026-04: old `toronto.ca/...` was 404; now `jobs.toronto.ca/jobsatcity/search/?q=intern` |
+| Govt Canada | `govt_canada.py` | ✅ Updated selector 2026-04: `table.resultTable tr` matched nothing; now `a[href*='page1800']` |
+| YC Work at a Startup | `yc.py` | ✅ Playwright only — `/jobs.json` endpoint returned HTTP 500 as of 2026-04; navigates `workatastartup.com/jobs?q=intern` |
 
 **Community Sources (stdlib only)**
 
@@ -121,9 +121,8 @@ GITHUB_REPOS = [
 ]
 
 GREENHOUSE_COMPANIES = {
-    # Confirmed working as of 2026-04
     "Faire":        "faire",
-    "HubSpot":      "hubspot",
+    # "HubSpot":   "hubspot",       # 0 jobs as of 2026-04 — may have moved off Greenhouse
     "Figma":        "figma",
     "Vercel":       "vercel",
     "Cloudflare":   "cloudflare",
@@ -141,8 +140,7 @@ GREENHOUSE_COMPANIES = {
 }
 
 LEVER_COMPANIES = {
-    # Confirmed working as of 2026-04
-    "Plaid": "plaid",
+    "Plaid": "plaid",  # confirmed 2026-04 — API works, no current intern postings
     # 404 as of 2026-04 — moved to Greenhouse or other ATS:
     # "Stripe" → Greenhouse, "OpenAI" → check, "Anthropic" → Greenhouse,
     # "Databricks", "Scale AI", "Benchling", "Asana", "Brex", "Rippling"
@@ -165,7 +163,7 @@ BIG_TECH_ENABLED = {
 
 PLAYWRIGHT_JOBS_ENABLED = {
     "meta":  True,
-    "tesla": True,
+    "tesla": False,  # Cloudflare blocks headless Chromium as of 2026-04
     "yc":    True,
 }
 
@@ -174,12 +172,15 @@ BIG_TECH_SEARCH_QUERY = "software intern"
 
 PUBLIC_SECTOR_ENABLED = {
     "govt_canada":    True,
-    "ontario_public": True,
+    "ontario_public": False,  # Broken 2026-04 — gojobs.gov.on.ca uses Radware CAPTCHA
     "opg":            True,
     "city_toronto":   True,
 }
 
 GOVT_CANADA_KEYWORDS = [
+    "student",     # GC Jobs uses "student" not "intern" for co-op/summer programs
+    "co-op",
+    "intern",
     "software", "developer", "engineer", "programmer",
     "data", "technology", "IT", "information technology",
 ]
@@ -192,12 +193,14 @@ LOCATIONS_INCLUDE = [
 # Role-level + season indicators ONLY.
 # Do NOT add tech stack keywords (backend, frontend, etc.) — they match senior full-time titles.
 # Season keywords use "20" suffix to match "Summer 2026" but not standalone "summer".
+# "student" added for Government of Canada positions (GC uses "Student Software Developer" etc.)
 KEYWORDS_INCLUDE = [
     "intern",
     "internship",
     "co-op",
     "coop",
     "co op",
+    "student",      # Government of Canada uses "student" for co-op/summer programs
     # "new grad",     # disabled — intern-only mode
     # "entry level",  # disabled — intern-only mode
     # "junior",       # disabled — intern-only mode
@@ -282,21 +285,21 @@ Tier 2 (`big_tech.py`) and Tier 3 (`workday.py`) bypass `LOCATIONS_INCLUDE`. Loc
 
 These scrapers parse HTML or DOM structure directly and are most likely to break silently if the source site changes its layout. Check these first if a scraper suddenly returns 0 results.
 
-| Scraper | File | Risk | Last verified |
-|---|---|---|---|
-| SimplifyJobs repos | `github_repos.py` | Switched markdown→HTML tables 2026-04 (fixed). Could change again. | 2026-04 |
-| Hacker News Who's Hiring | `hackernews.py` | Parses HN comment HTML. HN rarely changes layout, but format shift = silent 0 results. | — |
-| YC Work at a Startup | `yc.py` | Already broke once (HTTP 500 on `/jobs.json` 2026-04). Now Playwright on `workatastartup.com/jobs`. CSS selectors could break on redesign. | 2026-04 |
-| Meta careers | `playwright_jobs.py` | Playwright CSS selectors. Meta redesigns career pages. | — |
-| Tesla careers | `playwright_jobs.py` | Playwright CSS selectors. Tesla career pages change frequently. | — |
-| Govt Canada | `govt_canada.py` | Already broke once (RSS page2710 removed 2026-04). Now Playwright on page2440. | 2026-04 |
-| Ontario Public Service | `ontario_public.py` | Playwright CSS selectors on OPS careers portal. | — |
-| OPG | `opg.py` | Playwright, navigates directly to `/search?q=` (home search is CSS-hidden). | — |
-| City of Toronto | `city_toronto.py` | Playwright CSS selectors on city portal. | — |
+| Scraper | File | Status | Risk | Last verified |
+|---|---|---|---|---|
+| SimplifyJobs repos | `github_repos.py` | ✅ | Switched markdown→HTML tables 2026-04 (fixed). Could change again. | 2026-04 |
+| Hacker News Who's Hiring | `hackernews.py` | ✅ | Parses HN comment HTML. HN rarely changes layout, but format shift = silent 0 results. | — |
+| YC Work at a Startup | `yc.py` | ✅ | Already broke once (HTTP 500 on `/jobs.json` 2026-04). Now Playwright on `workatastartup.com/jobs`. CSS selectors could break on redesign. | 2026-04 |
+| Meta careers | `playwright_jobs.py` | ✅ | Rewrote 2026-04 to intercept GraphQL response instead of CSS selector (SPA redesign broke old approach). Response key `job_search_with_featured_jobs.all_jobs` could change. | 2026-04 |
+| Tesla careers | `playwright_jobs.py` | ❌ DISABLED | Cloudflare blocks headless Chromium as of 2026-04. No public API found. | 2026-04 |
+| Govt Canada | `govt_canada.py` | ✅ | Selector updated 2026-04: `table.resultTable tr` was wrong; now `a[href*='page1800']`. GC jobs uses "student" not "intern" in titles. | 2026-04 |
+| Ontario Public Service | `ontario_public.py` | ❌ DISABLED | gojobs.gov.on.ca (new OPS portal) uses Radware CAPTCHA — blocks headless Chromium. | 2026-04 |
+| OPG | `opg.py` | ✅ | Playwright, navigates directly to `/search?q=` (home search is CSS-hidden). | 2026-04 |
+| City of Toronto | `city_toronto.py` | ✅ | URL updated 2026-04: old `toronto.ca/city-government/...` is 404; now `jobs.toronto.ca/jobsatcity/search/?q=intern`. | 2026-04 |
 
-**How to spot a broken scraper:** It runs without error but returns 0 results — or far fewer than usual. Add a `print(f"[scraper_name] {len(jobs)} jobs found")` and run the scraper manually to check.
+**How to spot a broken scraper:** `main.py` now logs `[scraper_name] N jobs returned, M new` for every run. A scraper returning 0 that used to return results is a signal to investigate.
 
-**JSON API scrapers (lower risk):** Greenhouse, Lever, Workday — these return structured JSON. A breaking change usually produces an HTTP error or schema mismatch, not silent 0 results.
+**JSON API scrapers (lower risk):** Greenhouse, Lever, Workday — these return structured JSON. A breaking change usually produces an HTTP error or schema mismatch, not silent 0 results. Amazon's `jobs` list field was silently renamed from `hits` in 2026-04 (fixed).
 
 ---
 
@@ -388,9 +391,9 @@ ANTHROPIC_API_KEY=sk-ant-...
 
 - **One email per posting** — not a digest. Subject: `🚀 Company — Title (Location)`
 - **launchd fires every 5 min** — each scraper self-regulates via `SCRAPER_INTERVALS`
-- **Tier 2 + Tier 3 bypass `LOCATIONS_INCLUDE`** — use `BIG_TECH_LOCATIONS` via API query params
+- **Tier 1, 2, 3 all bypass `LOCATIONS_INCLUDE`** — Greenhouse/Lever pass `tier="big_tech"` (same as Tier 2/3); all are curated company lists where you want all intern postings regardless of location. Location filter only applies to community (HN) and public sector tiers.
 - **`BIG_TECH_ENABLED` = Tier 2 JSON API scrapers only** (Amazon, Google, Microsoft, Apple, Uber)
-- **`PLAYWRIGHT_JOBS_ENABLED` = Meta, Tesla, YC** — separate from BIG_TECH_ENABLED
+- **`PLAYWRIGHT_JOBS_ENABLED` = Meta, YC** (Tesla disabled 2026-04 — Cloudflare blocking)
 - **Tier 1–3 are stdlib only** — zero pip installs (except certifi for macOS SSL); YC moved from Tier 3 to Tier 4 (Playwright) in 2026-04 when `/jobs.json` was deprecated
 - **Playwright is optional** — Tier 4 scrapers skip gracefully if not installed
 - **No LinkedIn automated messaging** — find and log only, all outreach manual
@@ -407,12 +410,18 @@ ANTHROPIC_API_KEY=sk-ant-...
 - **SimplifyJobs repos use `dev` branch** — `github_repos.py` tries `dev` first, falls back to `main`
 - **Workday URL format** — job links require `/en-US/{site}` prefix before `externalPath`; Referer header and `appliedFacets: {}` in POST body are required
 - **OPG search** — home page search input is CSS-hidden; scraper navigates directly to `/search?q={term}`
-- **Govt Canada** — RSS feed (page2710) removed as of 2026-04; scraper uses Playwright on page2440; uses `urllib.parse.quote` (NOT `urllib.request.quote` — that module has no `quote` function)
+- **Govt Canada** — RSS feed (page2710) removed 2026-04; scraper uses Playwright on page2440; selector is `a[href*='page1800']` (job detail links); GC Jobs uses "student" not "intern" in titles — added "student" to `KEYWORDS_INCLUDE` and `GOVT_CANADA_KEYWORDS`; uses `urllib.parse.quote` (NOT `urllib.request.quote`)
 - **YC Work at a Startup** — `/jobs.json` endpoint returned HTTP 500 as of 2026-04; converted to Playwright scraper navigating `workatastartup.com/jobs?q=intern`; gated by `PLAYWRIGHT_JOBS_ENABLED["yc"]`
 - **`github_repos.py` uses `html.parser`** — SimplifyJobs switched README format from markdown pipe tables to HTML `<table>` in 2026-04; parser rewritten using stdlib `html.parser`; no new dependencies
 - **`"github"` tier bypasses location filter** — same mechanism as `"big_tech"` tier; SimplifyJobs is a curated global list so location filtering would drop valid US/remote postings
 - **SimplifyJobs company names may have emoji prefixes** — FAANG-tier companies are tagged `🔥, Cloudflare` in the HTML; `APPLIED_COMPANIES` entries must match the exact parsed string; workaround is to rely on Greenhouse/Lever/Workday scrapers for those companies instead
 - **New-Grad-Positions disabled** — `SimplifyJobs/New-Grad-Positions` commented out of `GITHUB_REPOS` as of 2026-04; re-enable to include new-grad roles
+- **Amazon schema changed 2026-04** — `data["hits"]` is now an integer count; job list is now `data["jobs"]` with flat fields (not nested under `fields`). Fixed in `big_tech.py`.
+- **Meta careers redesigned 2026-04** — CSS selector approach broke; `playwright_jobs.py` now intercepts the GraphQL response at `/graphql` and parses `data.job_search_with_featured_jobs.all_jobs`. Job URLs: `metacareers.com/jobs/{id}/`.
+- **Tesla blocked 2026-04** — Cloudflare returns "Access Denied" to headless Chromium. No public API. Disabled in `PLAYWRIGHT_JOBS_ENABLED`.
+- **Ontario Public Service broken 2026-04** — old ontario.ca URL is 404; new portal (gojobs.gov.on.ca) uses Radware CAPTCHA. Disabled in `PUBLIC_SECTOR_ENABLED`.
+- **City of Toronto URL changed 2026-04** — old `toronto.ca/city-government/...` is 404; scraper now uses `jobs.toronto.ca/jobsatcity/search/?q=intern` with `a[href*='/job/']` selector.
+- **main.py per-scraper logging** — each scraper now prints `[name] N jobs returned, M new` every run for diagnostics.
 
 ---
 

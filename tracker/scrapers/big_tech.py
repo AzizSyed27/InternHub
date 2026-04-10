@@ -73,25 +73,14 @@ def _scrape_amazon() -> list[Job]:
             req = urllib.request.Request(url, headers=_HEADERS)
             with urllib.request.urlopen(req, timeout=15) as resp:
                 data = json.loads(resp.read().decode())
-            # Amazon's CloudSearch API wraps results: {"hits": {"found": N, "hit": [...]}}
-            # Older format was {"hits": [...]}.  Handle both; skip if hits is an int/other.
-            raw_hits = data.get("hits", [])
-            if isinstance(raw_hits, dict):
-                hit_list = raw_hits.get("hit", [])
-            elif isinstance(raw_hits, list):
-                hit_list = raw_hits
-            else:
-                hit_list = []
-            for hit in hit_list:
-                # CloudSearch wraps fields under a "fields" key; flat format puts them top-level
-                fields = hit.get("fields", hit)
-                def _first(val):
-                    return val[0] if isinstance(val, list) and val else (val or "")
-                title = _first(fields.get("title", ""))
-                job_url = "https://www.amazon.jobs" + _first(fields.get("job_path", ""))
-                loc = _first(fields.get("normalized_location", "")) or _first(fields.get("location", ""))
-                description = _first(fields.get("description_short", "")) or ""
-                posted = _first(fields.get("posted_date", "")) or ""
+            # As of 2026-04, Amazon's API returns results under "jobs" (flat list).
+            # The old "hits" key is now an integer count, not the job list.
+            for job_item in data.get("jobs", []):
+                title = job_item.get("title", "")
+                job_url = "https://www.amazon.jobs" + job_item.get("job_path", "")
+                loc = job_item.get("normalized_location", "") or job_item.get("location", "") or ""
+                description = job_item.get("description_short", "") or ""
+                posted = job_item.get("posted_date", "") or ""
                 job: Job = {
                     "id": make_job_id("amazon", "Amazon", title, job_url),
                     "title": title,

@@ -53,7 +53,7 @@ def _scrape_company(company_name: str, slug: str) -> list[Job]:
             "source": "Greenhouse",
         }
 
-        if passes_filters(job, "tier1"):
+        if passes_filters(job, "big_tech"):
             jobs.append(job)
 
     return jobs

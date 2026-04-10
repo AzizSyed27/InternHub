@@ -168,15 +168,18 @@ def main() -> None:
             try:
                 jobs = scrape_fn()
                 db.set_last_run(name)
+                scraper_new = 0
                 for job in jobs:
                     if db.is_new(job["id"]):
                         db.mark_seen(job["id"])
                         total_new += 1
+                        scraper_new += 1
                         try:
                             send_email(job)
                             emails_sent += 1
                         except Exception as exc:
                             print(f"[main] WARNING: failed to send email for '{job['title']}': {exc}")
+                print(f"[{name}] {len(jobs)} jobs returned, {scraper_new} new")
             except Exception as exc:
                 print(f"[main] WARNING: {name} scraper failed: {exc}")
 

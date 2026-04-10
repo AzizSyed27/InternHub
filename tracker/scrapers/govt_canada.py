@@ -55,13 +55,13 @@ def _scrape_playwright() -> list[Job]:
                     wait_until="networkidle",
                     timeout=30000,
                 )
-                # Job listing rows
-                rows = page.locator("table.resultTable tr, .search-result-item").all()
+                # Job listings are plain anchor tags linking to page1800?poster=...
+                # The old table.resultTable selector no longer matches as of 2026-04.
+                rows = page.locator("a[href*='page1800']").all()
                 for row in rows:
                     try:
-                        link_el = row.locator("a").first
-                        href = link_el.get_attribute("href") or ""
-                        title = link_el.inner_text().strip()
+                        href = row.get_attribute("href") or ""
+                        title = row.inner_text().strip()
                         if not title or not href or href in seen_urls:
                             continue
                         if not href.startswith("http"):

@@ -26,7 +26,7 @@ GREENHOUSE_COMPANIES = {
     # Verify slugs at: boards.greenhouse.io/{slug}
     # Remove or update any that return 404 — companies switch ATS over time.
     "Faire":        "faire",
-    "HubSpot":      "hubspot",
+    # "HubSpot":   "hubspot",       # 0 jobs as of 2026-04 — may have moved off Greenhouse
     "Figma":        "figma",
     "Vercel":       "vercel",
     "Cloudflare":   "cloudflare",
@@ -103,7 +103,7 @@ BIG_TECH_ENABLED = {
 # ---------------------------------------------------------------------------
 PLAYWRIGHT_JOBS_ENABLED = {
     "meta":  True,
-    "tesla": True,
+    "tesla": False,  # Blocked by Cloudflare as of 2026-04 — returns Access Denied to headless Chromium
     "yc":    True,
 }
 
@@ -112,7 +112,7 @@ PLAYWRIGHT_JOBS_ENABLED = {
 # ---------------------------------------------------------------------------
 PUBLIC_SECTOR_ENABLED = {
     "govt_canada":    True,
-    "ontario_public": True,
+    "ontario_public": False,  # Broken as of 2026-04 — gojobs.gov.on.ca uses Radware CAPTCHA; blocks headless Chromium
     "opg":            True,
     "city_toronto":   True,
 }
@@ -122,6 +122,11 @@ PUBLIC_SECTOR_ENABLED = {
 # These are sent as search terms, not used for client-side filtering.
 # ---------------------------------------------------------------------------
 GOVT_CANADA_KEYWORDS = [
+    # Search terms sent to emploisfp-psjobs.cfp-psc.gc.ca.
+    # GC Jobs uses "student" not "intern" for co-op/summer programs.
+    "student",     # catches "Student Software Developer", "IT Student (Co-op)", etc.
+    "co-op",       # catches co-op positions specifically
+    "intern",      # included for completeness; GC Jobs currently returns 0 for this
     "software",
     "developer",
     "engineer",
@@ -171,8 +176,10 @@ KEYWORDS_INCLUDE = [
     "co-op",
     "coop",
     "co op",
+    "student",     # Government of Canada uses "student" for co-op/summer programs
+                   # e.g. "Student Software Developer", "IT Student (Co-op)"
     #"new grad",
-   # "entry level",
+    # "entry level",
     #"junior",
     "summer 20",   # matches "Summer 2026/2027" but not standalone "summer"
     "fall 20",     # matches "Fall 2026/2027" but not "fallback" or "shortfall"
