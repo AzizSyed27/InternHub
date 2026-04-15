@@ -78,8 +78,8 @@ Loop over `BIG_TECH_LOCATIONS`, make one request per location, merge and dedupli
 | Amazon | `https://www.amazon.jobs/en/search.json?base_query={query}&result_limit=100` | ✅ Working — queries `["software intern", "software internship"]` (no stemming); `loc_query` ignored by API |
 | Google | `https://careers.google.com/api/jobs/jobs-v1/search/?q=software+intern&location={location}` | ❌ Deprecated as of 2026-04 — no public replacement without auth |
 | Microsoft | `https://apply.careers.microsoft.com/api/pcsx/search?domain=microsoft.com&query={query}&start={offset}&num_jobs=100` | ✅ Working — Eightfold PCSX API; old jobs.careers.microsoft.com had SSL mismatch (fixed 2026-04) |
-| Apple | `https://jobs.apple.com/api/role/search` (POST) | ❌ Endpoint does not exist — needs Playwright |
-| Uber | `jobs.uber.com` | ❌ Stub — validate endpoint via DevTools first |
+| Apple | `https://jobs.apple.com/api/role/search` (POST) | ❌ Endpoint does not exist — moved to Playwright (`playwright_jobs.py`) |
+| Uber | `jobs.uber.com` | ❌ Cloudflare-blocked — moved to Playwright (`playwright_jobs.py`) |
 
 **Tier 3 — Workday ATS JSON API (stdlib only)**
 
@@ -99,6 +99,8 @@ To add a new company: open their Workday careers page in DevTools → Network ta
 |---|---|---|
 | Meta | `playwright_jobs.py` | ✅ Rewrote 2026-04: now intercepts GraphQL response at `/graphql` (old CSS selector broke on SPA redesign) |
 | Google | `playwright_jobs.py` | ✅ Added 2026-04: DOM scraper on `google.com/about/careers/applications/jobs/results?employment_type=INTERN&q=software`; job cards are `li.lLd3Je`, title `h3.QJPWVe`, link is relative href → prefixed with `/about/careers/applications/`, location from `.wVoYLb` text after `place\n` marker |
+| Apple | `playwright_jobs.py` | ✅ Added 2026-04: DOM scraper on `jobs.apple.com/en-ca/search?location=canada-CANC+united-states-USA&key=Software&team=internships-STDNT-INTRN`; job links `ul#search-job-list a[href*='/details/']`, dedup by `.job-posted-date` sibling presence; pagination via `[aria-label="Next Page"]` |
+| Uber | `playwright_jobs.py` | ✅ Added 2026-04: response interceptor on `www.uber.com/ca/en/careers/list/?query=Intern&department=University`; `jobs.uber.com` is Cloudflare-blocked but `www.uber.com` is accessible; heuristic JSON traversal finds job array in XHR responses; job URL: `uber.com/global/en/careers/list/{jobId}/` |
 | Tesla | `playwright_jobs.py` | ❌ Disabled 2026-04 — Cloudflare blocks headless Chromium (Access Denied). No public API found. |
 | Ontario Public Service | `ontario_public.py` | ❌ Disabled 2026-04 — old URL 404; new portal (gojobs.gov.on.ca) uses Radware CAPTCHA |
 | OPG | `opg.py` | ✅ Navigates directly to `/search?q={term}` — home page search input is CSS-hidden |
@@ -123,7 +125,6 @@ GITHUB_REPOS = [
 
 GREENHOUSE_COMPANIES = {
     "Faire":        "faire",
-    # "HubSpot":   "hubspot",       # 0 jobs as of 2026-04 — may have moved off Greenhouse
     "Figma":        "figma",
     "Vercel":       "vercel",
     "Cloudflare":   "cloudflare",
@@ -135,16 +136,29 @@ GREENHOUSE_COMPANIES = {
     "MongoDB":      "mongodb",
     "Anthropic":    "anthropic",
     "Stripe":       "stripe",
-    # 404 as of 2026-04 — companies left Greenhouse or changed slugs:
-    # "Shopify", "Cohere", "Wealthsimple", "Ada", "ApplyBoard",
-    # "Notion", "Datadog", "OpenAI", "Databricks"
+    "Databricks":   "databricks",  # confirmed 2026-04 — 14 intern jobs
+    "Asana":        "asana",       # confirmed 2026-04 — 7 intern jobs
+    "Carta":        "carta",       # confirmed 2026-04 — 7 intern jobs
+    "Robinhood":    "robinhood",   # confirmed 2026-04 — 7 intern jobs
+    "Twilio":       "twilio",      # confirmed 2026-04 — 5 intern jobs
+    "Scale AI":     "scaleai",     # confirmed 2026-04 — 4 intern jobs
+    "Brex":         "brex",        # confirmed 2026-04 — 2 intern jobs
+    "Duolingo":     "duolingo",    # confirmed 2026-04 — 2 intern jobs
+    "Mercury":      "mercury",     # confirmed 2026-04 — 2 intern jobs
+    "Dropbox":      "dropbox",     # confirmed 2026-04 — 1 intern job
+    # --- 0 jobs / empty board as of 2026-04 ---
+    # "HubSpot":      "hubspot",
+    # --- 404 as of 2026-04 — left Greenhouse, ATS unknown ---
+    # "Shopify", "OpenAI", "Cohere", "Wealthsimple", "Ada", "ApplyBoard",
+    # "Notion", "Datadog", "Benchling", "Rippling", "Airtable", "Ramp"
 }
 
 LEVER_COMPANIES = {
-    "Plaid": "plaid",  # confirmed 2026-04 — API works, no current intern postings
-    # 404 as of 2026-04 — moved to Greenhouse or other ATS:
-    # "Stripe" → Greenhouse, "OpenAI" → check, "Anthropic" → Greenhouse,
-    # "Databricks", "Scale AI", "Benchling", "Asana", "Brex", "Rippling"
+    "Plaid":    "plaid",     # confirmed 2026-04 — 94 total jobs, 0 intern currently
+    "Palantir": "palantir",  # confirmed 2026-04 — 20 intern/co-op jobs
+    # --- 404 as of 2026-04 — moved to Greenhouse or another ATS ---
+    # "Stripe", "OpenAI", "Anthropic", "Databricks", "Scale AI" → all on Greenhouse now
+    # "Benchling", "Asana", "Brex" → Greenhouse; "Rippling" → unknown
 }
 
 WORKDAY_COMPANIES = {
@@ -159,7 +173,7 @@ BIG_TECH_ENABLED = {
     "google":    False,  # Public API deprecated — no replacement without auth
     "microsoft": True,   # Eightfold PCSX API — apply.careers.microsoft.com/api/pcsx/search — confirmed 2026-04
     "apple":     False,  # No public JSON API — needs Playwright
-    "uber":      False,  # Stub — validate endpoint via DevTools on jobs.uber.com first
+    "uber":      False,  # Cloudflare-blocked on jobs.uber.com — moved to PLAYWRIGHT_JOBS_ENABLED
 }
 
 PLAYWRIGHT_JOBS_ENABLED = {
@@ -167,6 +181,8 @@ PLAYWRIGHT_JOBS_ENABLED = {
     "tesla":  False,  # Cloudflare blocks headless Chromium as of 2026-04
     "yc":     True,
     "google": True,   # DOM scraper — old careers.google.com API deprecated 2026-04
+    "apple":  True,   # DOM scraper — /api/role/search is 404; /api/v1/search requires CSRF auth headless can't fulfill
+    "uber":   True,   # Response interceptor — jobs.uber.com Cloudflare-blocked; www.uber.com accessible
 }
 
 BIG_TECH_LOCATIONS = ["canada", "united states", "usa", "us", "remote"]
@@ -237,6 +253,8 @@ SCRAPER_INTERVALS = {
     "meta":           30,
     "tesla":          60,
     "google":         30,
+    "apple":          30,
+    "uber":           30,
     "govt_canada":    240,
     "ontario_public": 240,
     "opg":            360,
@@ -299,7 +317,9 @@ These scrapers parse HTML or DOM structure directly and are most likely to break
 | YC Work at a Startup | `yc.py` | ✅ | Already broke once (HTTP 500 on `/jobs.json` 2026-04). Now Playwright on `workatastartup.com/jobs`. CSS selectors could break on redesign. | 2026-04 |
 | Meta careers | `playwright_jobs.py` | ✅ | Rewrote 2026-04 to intercept GraphQL response instead of CSS selector (SPA redesign broke old approach). Response key `job_search_with_featured_jobs.all_jobs` could change. | 2026-04 |
 | Google careers | `playwright_jobs.py` | ✅ | Added 2026-04: DOM scraper. Selectors `li.lLd3Je` (cards), `h3.QJPWVe` (title), `.wVoYLb` (location). High risk — obfuscated CSS class names could change on any deploy. | 2026-04 |
+| Apple careers | `playwright_jobs.py` | ✅ | Added 2026-04: DOM scraper. `ul#search-job-list a[href*='/details/']`; deduped via `.job-posted-date` sibling; `wait_until="load"` + `wait_for_selector` (networkidle never resolves — persistent analytics connections). Pagination via `[aria-label="Next Page"]`. | 2026-04 |
 | Tesla careers | `playwright_jobs.py` | ❌ DISABLED | Cloudflare blocks headless Chromium as of 2026-04. No public API found. | 2026-04 |
+| Uber careers | `playwright_jobs.py` | ✅ | Added 2026-04: response interceptor on `www.uber.com`. Heuristic JSON traversal finds job array. If 0 jobs returned, inspect XHR on `www.uber.com/ca/en/careers/list/?query=Intern&department=University` and update `_on_response` key path. | 2026-04 |
 | Govt Canada | `govt_canada.py` | ✅ | Selector updated 2026-04: `table.resultTable tr` was wrong; now `a[href*='page1800']`. GC jobs uses "student" not "intern" in titles. | 2026-04 |
 | Ontario Public Service | `ontario_public.py` | ❌ DISABLED | gojobs.gov.on.ca (new OPS portal) uses Radware CAPTCHA — blocks headless Chromium. | 2026-04 |
 | OPG | `opg.py` | ✅ | Playwright, navigates directly to `/search?q=` (home search is CSS-hidden). | 2026-04 |
@@ -313,11 +333,50 @@ These scrapers parse HTML or DOM structure directly and are most likely to break
 
 ## Next Steps
 
-- **Google pagination** — current Playwright DOM scraper returns ~18 results (one page). The careers page may have pagination or infinite scroll. Inspect the page for a "Next" button or scroll-to-load and extend `_scrape_google()` if needed.
-- **Apple scraper** — `BIG_TECH_ENABLED["apple"]` is disabled; `jobs.apple.com/api/role/search` (POST) returns 404. Find the real endpoint via DevTools on `jobs.apple.com`, then implement `_scrape_apple()` in `big_tech.py`.
-- **Uber scraper** — `BIG_TECH_ENABLED["uber"]` is disabled; `_scrape_uber()` is a stub. Find the XHR endpoint via DevTools on `jobs.uber.com`, implement and enable.
-- **Verify Greenhouse companies** — confirm each slug in `GREENHOUSE_COMPANIES` still resolves at `boards.greenhouse.io/{slug}` and that the company still posts jobs there. Some may have migrated to Lever, Workday, or their own ATS.
-- **Verify Lever companies** — same check: confirm each slug in `LEVER_COMPANIES` still resolves at `jobs.lever.co/{slug}`.
+- **Find Canada-focused internship GitHub repos** — SimplifyJobs covers mostly US companies. Search GitHub for Canadian internship/co-op curated lists (e.g. search "canada internship 2026 site:github.com", "canadian co-op positions github"). If a repo maintains a markdown or HTML table of postings in the same format as SimplifyJobs, add it to `GITHUB_REPOS` in `config.py` — `github_repos.py` already handles both markdown pipe tables and HTML `<table>` formats. Candidates to investigate: any "Canada-Internships", "Canadian-Tech-Internships", or university-specific co-op boards maintained as GitHub repos.
+- **Uber pagination** — current Playwright response interceptor captures whatever the SPA loads on first render. If there are more than one page of intern results, check whether the page has a "Load more" or pagination control and extend `_scrape_uber()` accordingly.
+- **Find ATS for 404 Greenhouse companies** — the following were on Greenhouse but are now 404; find where they moved and add them back: Shopify, OpenAI, Cohere, Ada, Notion, Datadog, Benchling, Rippling, Airtable, Ramp. Check Ashby (`jobs.ashbyhq.com/{slug}`), Workday, or their own careers page.
+- **Check Ashby ATS** — several companies that left Greenhouse/Lever have moved to Ashby (e.g., Ramp, Airtable, Linear, Retool). Ashby has a public API at `jobs.ashbyhq.com/api/non-user-graphql` — worth implementing a new `ashby.py` Tier 1 scraper if enough target companies use it.
+- **YC scraper returning 0** — `workatastartup.com/jobs?q=intern` returned 0 jobs in last test (2026-04); CSS selectors or page structure may have changed. Inspect and fix if YC is a priority source.
+- **Toronto/GTA company Workday check** — Thomson Reuters, PointClickCare (Mississauga), BlackBerry (Waterloo), OpenText (Waterloo) likely use Workday; find their tenant slugs via DevTools on their careers pages and add to `WORKDAY_COMPANIES`.
+
+### Toronto / Scarborough / GTA Company Research (2026-04)
+
+Checked ~50 Toronto-area companies across Greenhouse, Lever, and Ashby. Results:
+
+**Added to `GREENHOUSE_COMPANIES`:**
+| Company | Slug | Notes |
+|---|---|---|
+| Ritual | `ritual` | Toronto food-tech; Software Engineer Intern + Research Intern (Remote) — confirmed 2026-04 |
+| Lightspeed | `lightspeedhq` | Montreal POS/commerce; board active (182 jobs); intern jobs currently Amsterdam only — worth monitoring |
+| Geotab | `geotab` | Oakville (GTA) fleet tech; board active (80 jobs); intern jobs currently Germany/UK only — worth monitoring |
+
+**Greenhouse boards exist but 0 intern jobs (monitor, don't add yet):**
+- `ecobee` — Toronto smart home (Ecobee); board exists, 0 total jobs
+- `benevity` — Calgary/Toronto CSR platform; 20 total jobs, 0 intern
+- `touchbistro` — Toronto restaurant tech; 5 total jobs, 0 intern
+
+**Lever boards exist but 0 relevant intern jobs:**
+- `wealthsimple` — 0 total jobs (empty board)
+- `achievers` — Toronto HR platform; 18 jobs, 0 intern
+- `wattpad` — Toronto storytelling; 14 jobs, 2 "intern" titles but they're WEBTOON marketing (Los Angeles)
+- `magnetforensics` — Ottawa digital forensics; 40 jobs, 0 intern
+
+**Ashby boards confirmed (all 0 jobs as of 2026-04):**
+Wealthsimple, FreshBooks, Koho, Loopio, D2L, Hootsuite, Clearco, League, PointClickCare, Achievers, Neo Financial, Financeit, TouchBistro, Kira Systems, ApplyBoard, Vena Solutions, Top Hat, Clio, Lightspeed — boards verified but no postings. Re-check seasonally.
+
+**No ATS found — investigate custom portals or Workday:**
+- **Clio** (Burnaby BC) — not on GH/Lever/Ashby; check `clio.com/careers`
+- **FreshBooks** (Toronto) — Ashby board (0 jobs); check `freshbooks.com/careers`
+- **Koho** (Toronto fintech) — Ashby board (0 jobs)
+- **D2L** (Kitchener LMS) — Ashby board (0 jobs); check `d2l.com/careers`
+- **Hootsuite** (Vancouver) — Ashby board (0 jobs); Lever timed out
+- **Miovision** (Waterloo traffic AI) — not found on any ATS; check `miovision.com/careers`
+- **Vidyard** (Kitchener video) — not found on GH/Lever/Ashby; check `vidyard.com/careers`
+- **Thomson Reuters** (Toronto) — likely Workday; check `careers.thomsonreuters.com`
+- **PointClickCare** (Mississauga) — likely Workday; check `pointclickcare.com/careers`
+- **BlackBerry** (Waterloo) — likely Workday; check `blackberry.com/en/us/company/careers`
+- **OpenText** (Waterloo) — likely Workday; check `opentext.com/careers`
 
 ---
 
@@ -404,8 +463,8 @@ ANTHROPIC_API_KEY=sk-ant-...
 - **One email per posting** — not a digest. Subject: `🚀 Company — Title (Location)`
 - **launchd fires every 5 min** — each scraper self-regulates via `SCRAPER_INTERVALS`
 - **Tier 1, 2, 3 all bypass `LOCATIONS_INCLUDE`** — Greenhouse/Lever pass `tier="big_tech"` (same as Tier 2/3); all are curated company lists where you want all intern postings regardless of location. Location filter only applies to community (HN) and public sector tiers.
-- **`BIG_TECH_ENABLED` = Tier 2 JSON API scrapers only** (Amazon, Google, Microsoft, Apple, Uber)
-- **`PLAYWRIGHT_JOBS_ENABLED` = Meta, YC** (Tesla disabled 2026-04 — Cloudflare blocking)
+- **`BIG_TECH_ENABLED` = Tier 2 JSON API scrapers only** (Amazon, Google, Microsoft, Apple, Uber) — Apple and Google are `False`; both moved to Playwright
+- **`PLAYWRIGHT_JOBS_ENABLED` = Meta, YC, Google, Apple, Uber** (Tesla disabled 2026-04 — Cloudflare blocking)
 - **Tier 1–3 are stdlib only** — zero pip installs (except certifi for macOS SSL); YC moved from Tier 3 to Tier 4 (Playwright) in 2026-04 when `/jobs.json` was deprecated
 - **Playwright is optional** — Tier 4 scrapers skip gracefully if not installed
 - **No LinkedIn automated messaging** — find and log only, all outreach manual
@@ -433,7 +492,9 @@ ANTHROPIC_API_KEY=sk-ant-...
 - **Amazon uses two distinct search terms (2026-04)** — `base_query=software+intern` and `base_query=software+internship` return different job sets (no stemming). `_scrape_amazon()` queries both via `_AMAZON_QUERIES`. The `loc_query` parameter is silently ignored by Amazon's API (any value including nonexistent strings returns the same count) — location loop removed; one request per query with `result_limit=100`.
 - **Meta careers redesigned 2026-04** — CSS selector approach broke; `playwright_jobs.py` now intercepts the GraphQL response at `/graphql` and parses `data.job_search_with_featured_jobs.all_jobs`. Job URLs: `metacareers.com/jobs/{id}/`.
 - **Google careers Playwright scraper added 2026-04** — old `careers.google.com/api/jobs/jobs-v1/search/` deprecated (301 → 404 at new path). No interceptable JSON API — job data is rendered directly into the DOM. Scraper parses `li.lLd3Je` cards at `google.com/about/careers/applications/jobs/results?employment_type=INTERN&q=software`. Title: `h3.QJPWVe`; location: `.wVoYLb` text after `place\n` marker; URL: relative href prefixed with base. Returns ~18 results (one page). CSS class names are obfuscated and may change on Google deploys — high fragility risk.
+- **Apple careers Playwright scraper added 2026-04** — `jobs.apple.com/api/role/search` (old big_tech.py stub) returns 301 → `apple.com/pagenotfound`. The internal `/api/v1/search` endpoint requires a CSRF token fetched by the page's own JS — headless Playwright can't replicate that auth flow (returns `{"res": {"searchResults": [], "totalRecords": 0}}`). Job data IS rendered into the DOM. Scraper navigates `jobs.apple.com/en-ca/search?location=canada-CANC+united-states-USA&key=Software&team=internships-STDNT-INTRN` and parses `ul#search-job-list`. Each card has two `<a>` tags with the same href — title link (has `.job-posted-date` sibling) and "See full role description" (no date sibling); skip the second by checking the date sibling in `page.evaluate()`. Uses `wait_until="load"` + `wait_for_selector` because `networkidle` never resolves (persistent analytics connections). Pagination via `[aria-label="Next Page"]`. `BIG_TECH_ENABLED["apple"]` stays `False`; `PLAYWRIGHT_JOBS_ENABLED["apple"] = True`.
 - **Tesla blocked 2026-04** — Cloudflare returns "Access Denied" to headless Chromium. No public API. Disabled in `PLAYWRIGHT_JOBS_ENABLED`.
+- **Uber Playwright scraper added 2026-04** — `jobs.uber.com` is Cloudflare-blocked (403). `www.uber.com/ca/en/careers/list/` is an SPA accessible to headless Chromium. No public JSON API endpoint found in JS bundles (abstracted behind Redux `loadSearchJobsResults`). Playwright response interceptor captures XHR responses from `uber.com` and heuristically walks top-level and one level of nesting to find a list of objects with a `title` field. URL: `https://www.uber.com/ca/en/careers/list/?query=Intern&department=University`. Job URL: `uber.com/global/en/careers/list/{jobId}/`. Moved to `PLAYWRIGHT_JOBS_ENABLED`; `BIG_TECH_ENABLED["uber"]` stays `False`.
 - **Ontario Public Service broken 2026-04** — old ontario.ca URL is 404; new portal (gojobs.gov.on.ca) uses Radware CAPTCHA. Disabled in `PUBLIC_SECTOR_ENABLED`.
 - **City of Toronto URL changed 2026-04** — old `toronto.ca/city-government/...` is 404; scraper now uses `jobs.toronto.ca/jobsatcity/search/?q=intern` with `a[href*='/job/']` selector.
 - **main.py per-scraper logging** — each scraper now prints `[name] N jobs returned, M new` every run for diagnostics.

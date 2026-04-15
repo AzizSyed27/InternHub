@@ -101,16 +101,19 @@ def _load_scrapers() -> dict:
     _try_register("opg",            "tracker.scrapers.opg")
     _try_register("city_toronto",   "tracker.scrapers.city_toronto")
 
-    # playwright_jobs.scrape() handles both meta and tesla internally,
-    # so register it once under a unified key to avoid calling it twice
+    # playwright_jobs.scrape() handles meta, tesla, google, apple, and uber
+    # internally in a single browser session. Register it once under a unified
+    # key to avoid launching multiple browsers on the same run.
     if "meta" in scrapers and "tesla" in scrapers:
         scrapers["playwright_jobs"] = scrapers.pop("meta")
         scrapers.pop("tesla", None)
-        # Remap interval key
+        # Remap interval to the shortest of all Playwright scrapers
         SCRAPER_INTERVALS["playwright_jobs"] = min(
             SCRAPER_INTERVALS.get("meta", 30),
             SCRAPER_INTERVALS.get("tesla", 60),
             SCRAPER_INTERVALS.get("google", 30),
+            SCRAPER_INTERVALS.get("apple", 30),
+            SCRAPER_INTERVALS.get("uber", 30),
         )
 
     return scrapers

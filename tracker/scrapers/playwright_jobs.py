@@ -1,6 +1,6 @@
 # tracker/scrapers/playwright_jobs.py
 #
-# Scrapes Meta and Tesla career pages using Playwright.
+# Scrapes Meta, Tesla, Google, Apple, and Uber career pages using Playwright.
 #
 # Meta: Uses response interception to capture the GraphQL API response
 # at metacareers.com/graphql. The old CSS selector approach broke when
@@ -9,6 +9,17 @@
 # Tesla: Blocked by Cloudflare bot protection as of 2026-04. Returns []
 # with a warning. Re-test on future runs; may require playwright-stealth
 # or a manual check of their careers page for a public API.
+#
+# Google: DOM scraper (old careers.google.com JSON API deprecated 2026-04).
+# Paginates via "Next" button (aria-label) or infinite scroll fallback.
+#
+# Apple: DOM scraper added 2026-04. The old /api/role/search endpoint
+# (big_tech.py) returns a 404 redirect; /api/v1/search requires CSRF auth
+# that doesn't fire in headless mode. Job data is rendered into the DOM.
+# Navigates to en-ca/search filtered to Canada+USA+Software+Internships.
+#
+# Uber: Response interceptor on www.uber.com/ca/en/careers/list/ (SPA).
+# jobs.uber.com is Cloudflare-blocked; www.uber.com is accessible.
 #
 # Requires: pip install playwright && playwright install chromium
 # If Playwright is not installed, this scraper logs a warning and returns [].
@@ -67,6 +78,18 @@ def scrape() -> list[Job]:
                 jobs.extend(_scrape_google(page))
             except Exception as exc:
                 print(f"[playwright_jobs/google] WARNING: {exc}")
+
+        if PLAYWRIGHT_JOBS_ENABLED.get("apple"):
+            try:
+                jobs.extend(_scrape_apple(page))
+            except Exception as exc:
+                print(f"[playwright_jobs/apple] WARNING: {exc}")
+
+        if PLAYWRIGHT_JOBS_ENABLED.get("uber"):
+            try:
+                jobs.extend(_scrape_uber(page))
+            except Exception as exc:
+                print(f"[playwright_jobs/uber] WARNING: {exc}")
 
         browser.close()
     return jobs
@@ -146,7 +169,7 @@ def _scrape_meta(page) -> list[Job]:
 
 def _scrape_google(page) -> list[Job]:
     """
-    Scrape Google internship listings via DOM parsing.
+    Scrape Google internship listings via DOM parsing, exhausting all pages.
 
     Google's careers page is an Angular SPA at:
       https://www.google.com/about/careers/applications/jobs/results?employment_type=INTERN&q=software
@@ -160,8 +183,15 @@ def _scrape_google(page) -> list[Job]:
       Title:        h3.QJPWVe (inner text)
       Link:         a[href] — relative path like "jobs/results/{id}-{slug}?..."
       Location:     .wVoYLb inner text — "...\nplace\n{city, country}\nbar_chart\n..."
+
+    Pagination: tries "Next" button first (aria-label="Go to next page"), then falls
+    back to infinite-scroll detection. MAX_PAGES / MAX_SCROLL_ROUNDS guard against
+    runaway loops at peak recruiting season when result counts are high.
     """
     _BASE = "https://www.google.com/about/careers/applications/"
+    _MAX_PAGES = 10        # cap for "Next" button pagination
+    _MAX_SCROLL_ROUNDS = 15  # cap for infinite-scroll attempts
+
     page.goto(
         _BASE + "jobs/results?employment_type=INTERN&q=software",
         wait_until="networkidle",
@@ -169,43 +199,275 @@ def _scrape_google(page) -> list[Job]:
     )
     page.wait_for_timeout(2000)
 
-    cards = page.locator("li.lLd3Je").all()
-    if not cards:
+    jobs: list[Job] = []
+    seen_urls: set[str] = set()
+
+    def _harvest_cards():
+        """Parse all currently visible job cards and append new ones to jobs."""
+        for card in page.locator("li.lLd3Je").all():
+            try:
+                title = card.locator("h3.QJPWVe").inner_text().strip()
+                if not title:
+                    continue
+                href = card.locator("a").first.get_attribute("href") or ""
+                if not href:
+                    continue
+                # href is relative: "jobs/results/{id}-{slug}?..."  — strip query params
+                job_url = _BASE + href.split("?")[0]
+                if job_url in seen_urls:
+                    continue
+                seen_urls.add(job_url)
+                # Location is in .wVoYLb text after the "place" icon marker
+                wv_text = card.locator(".wVoYLb").first.inner_text()
+                loc_parts = wv_text.split("place\n")
+                location = loc_parts[1].split("\n")[0].strip() if len(loc_parts) > 1 else ""
+                job: Job = {
+                    "id": make_job_id("google", "Google", title, job_url),
+                    "title": title,
+                    "company": "Google",
+                    "location": location,
+                    "url": job_url,
+                    "date_posted": "",
+                    "description": "",
+                    "source": "Google",
+                }
+                if passes_filters(job, "big_tech"):
+                    jobs.append(job)
+            except Exception:
+                continue
+
+    _harvest_cards()
+
+    if not seen_urls:
         print("[playwright_jobs/google] WARNING: 0 job cards found — selector li.lLd3Je may have changed")
         return []
 
-    jobs: list[Job] = []
-    seen_urls: set[str] = set()
-    for card in cards:
+    # --- Stage 1: "Next" button pagination ---
+    # ARIA attributes are semantically stable even when obfuscated class names change.
+    next_btn = page.locator('[aria-label="Go to next page"]')
+    if next_btn.count() > 0:
+        for _ in range(_MAX_PAGES - 1):
+            try:
+                if next_btn.count() == 0 or not next_btn.first.is_visible():
+                    break
+                next_btn.first.click()
+                page.wait_for_load_state("networkidle")
+                page.wait_for_timeout(2000)
+                _harvest_cards()
+            except Exception:
+                break  # stop pagination on any error; return what we have
+    else:
+        # --- Stage 2: Infinite scroll fallback ---
+        for _ in range(_MAX_SCROLL_ROUNDS):
+            prev = len(seen_urls)
+            page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            page.wait_for_timeout(2500)
+            _harvest_cards()
+            if len(seen_urls) == prev:
+                break  # no new cards loaded; we've reached the end
+
+    return jobs
+
+
+def _scrape_uber(page) -> list[Job]:
+    """
+    Scrape Uber internship listings by intercepting XHR responses on the careers SPA.
+
+    URL: https://www.uber.com/ca/en/careers/list/?query=Intern&department=University
+      - "University" department filter surfaces intern/co-op postings
+      - jobs.uber.com is blocked by Cloudflare (403); www.uber.com is accessible
+
+    Approach: response interception (same pattern as _scrape_meta).
+    The SPA fetches job data via one or more XHR/fetch calls after page load.
+    We capture all JSON responses from uber.com and heuristically find the
+    one that contains a list of job objects (identified by a "title" field).
+
+    Job URL (confirmed from uber.com search results):
+      https://www.uber.com/global/en/careers/list/{jobId}/
+    """
+    captured: list[dict] = []
+
+    def _on_response(resp):
+        if "uber.com" not in resp.url:
+            return
         try:
-            title = card.locator("h3.QJPWVe").inner_text().strip()
-            if not title:
+            body = resp.json()
+        except Exception:
+            return
+        # Find a list of job objects: check top-level, then one level deep
+        jobs_list = None
+        if isinstance(body, list) and body and isinstance(body[0], dict) and "title" in body[0]:
+            jobs_list = body
+        elif isinstance(body, dict):
+            for val in body.values():
+                if isinstance(val, list) and val and isinstance(val[0], dict) and "title" in val[0]:
+                    jobs_list = val
+                    break
+                if isinstance(val, dict):
+                    for inner_val in val.values():
+                        if isinstance(inner_val, list) and inner_val and isinstance(inner_val[0], dict) and "title" in inner_val[0]:
+                            jobs_list = inner_val
+                            break
+                    if jobs_list:
+                        break
+        if jobs_list:
+            captured.extend(jobs_list)
+
+    page.on("response", _on_response)
+    page.goto(
+        "https://www.uber.com/ca/en/careers/list/?query=Intern&department=University",
+        wait_until="networkidle",
+        timeout=30000,
+    )
+    page.wait_for_timeout(2000)
+    page.remove_listener("response", _on_response)
+
+    if not captured:
+        print(
+            "[playwright_jobs/uber] WARNING: 0 jobs captured — "
+            "XHR response structure may have changed; inspect Network tab on "
+            "www.uber.com/ca/en/careers/list/?query=Intern&department=University"
+        )
+        return []
+
+    jobs: list[Job] = []
+    seen_ids: set[str] = set()
+    for item in captured[:100]:
+        try:
+            job_id = str(
+                item.get("id", "") or item.get("jobId", "") or item.get("requisitionId", "")
+            )
+            title = item.get("title", "") or item.get("jobTitle", "")
+            if not job_id or not title or job_id in seen_ids:
                 continue
-            href = card.locator("a").first.get_attribute("href") or ""
-            if not href:
-                continue
-            # href is relative: "jobs/results/{id}-{slug}?..."  — strip query params
-            job_url = _BASE + href.split("?")[0]
-            if job_url in seen_urls:
-                continue
-            seen_urls.add(job_url)
-            # Location is in .wVoYLb text after the "place" icon marker
-            wv_text = card.locator(".wVoYLb").first.inner_text()
-            loc_parts = wv_text.split("place\n")
-            location = loc_parts[1].split("\n")[0].strip() if len(loc_parts) > 1 else ""
+            seen_ids.add(job_id)
+            location = item.get("location", "") or item.get("city", "") or ""
+            if isinstance(location, dict):
+                location = location.get("name", "") or location.get("city", "") or ""
+            job_url = f"https://www.uber.com/global/en/careers/list/{job_id}/"
             job: Job = {
-                "id": make_job_id("google", "Google", title, job_url),
+                "id": make_job_id("uber", "Uber", title, job_url),
                 "title": title,
-                "company": "Google",
-                "location": location,
+                "company": "Uber",
+                "location": str(location),
                 "url": job_url,
                 "date_posted": "",
                 "description": "",
-                "source": "Google",
+                "source": "Uber",
             }
             if passes_filters(job, "big_tech"):
                 jobs.append(job)
         except Exception:
             continue
+
+    return jobs
+
+
+def _scrape_apple(page) -> list[Job]:
+    """
+    Scrape Apple internship listings via DOM parsing with pagination.
+
+    Apple's careers site is a React SPA. The old /api/role/search endpoint (big_tech.py)
+    returns a 404 redirect. The internal /api/v1/search endpoint requires CSRF auth that
+    doesn't fire in headless mode — job data is rendered directly into the DOM instead.
+
+    Target URL (confirmed 2026-04):
+      https://jobs.apple.com/en-ca/search?location=canada-CANC+united-states-USA
+        &key=Software&team=internships-STDNT-INTRN
+
+    DOM structure (confirmed 2026-04):
+      Job list:    ul#search-job-list
+      Job links:   a[href*='/details/'] — each card has TWO links (title + "See full role
+                   description"); the title link has a .job-posted-date sibling; the second
+                   link does not — skip any link whose date sibling is empty
+      Location:    span.table--advanced-search__location-sub
+      Date:        span.job-posted-date
+      Pagination:  nav.rc-pagination — "Next Page" button (aria-label)
+    """
+    _SEARCH_URL = (
+        "https://jobs.apple.com/en-ca/search"
+        "?location=canada-CANC+united-states-USA"
+        "&key=Software"
+        "&team=internships-STDNT-INTRN"
+    )
+    _MAX_PAGES = 20
+
+    # Use "load" (not "networkidle") — Apple's page keeps persistent analytics
+    # connections open that prevent networkidle from ever being reached.
+    # Instead, wait for the first job card link to appear in the DOM, which
+    # confirms the SPA has fetched and rendered the results.
+    page.goto(_SEARCH_URL, wait_until="load", timeout=30000)
+    page.wait_for_selector(
+        "ul#search-job-list a[href*='/details/']",
+        state="visible",
+        timeout=15000,
+    )
+    page.wait_for_timeout(500)
+
+    jobs: list[Job] = []
+    seen_hrefs: set[str] = set()
+
+    def _harvest():
+        items = page.evaluate("""() => {
+            const results = [];
+            const links = document.querySelectorAll("ul#search-job-list a[href*='/details/']");
+            links.forEach(a => {
+                const li = a.closest('li');
+                if (!li) return;
+                const dateEl = li.querySelector('.job-posted-date');
+                // Each card has two <a> tags with the same href: the title link
+                // (which has a .job-posted-date sibling) and "See full role description"
+                // (no date sibling). Skip the second one.
+                if (!dateEl || !dateEl.innerText.trim()) return;
+                const locEl = li.querySelector('.table--advanced-search__location-sub');
+                results.push({
+                    title:    a.innerText.trim(),
+                    href:     a.getAttribute('href'),
+                    location: locEl ? locEl.innerText.trim() : '',
+                    date:     dateEl.innerText.trim(),
+                });
+            });
+            return results;
+        }""")
+        for item in items:
+            href = (item.get("href") or "").split("?")[0]
+            if not href or href in seen_hrefs:
+                continue
+            seen_hrefs.add(href)
+            title = item.get("title", "")
+            if not title:
+                continue
+            job_url = "https://jobs.apple.com" + href
+            job: Job = {
+                "id": make_job_id("apple", "Apple", title, job_url),
+                "title": title,
+                "company": "Apple",
+                "location": item.get("location", ""),
+                "url": job_url,
+                "date_posted": item.get("date", ""),
+                "description": "",
+                "source": "Apple",
+            }
+            if passes_filters(job, "big_tech"):
+                jobs.append(job)
+
+    _harvest()
+
+    if not seen_hrefs:
+        print("[playwright_jobs/apple] WARNING: 0 job cards found — ul#search-job-list selector may have changed")
+        return []
+
+    # Paginate via "Next Page" button (aria-label is semantically stable)
+    next_btn = page.locator('[aria-label="Next Page"]')
+    for _ in range(_MAX_PAGES - 1):
+        try:
+            if next_btn.count() == 0 or not next_btn.first.is_enabled():
+                break
+            next_btn.first.click()
+            page.wait_for_load_state("networkidle")
+            page.wait_for_timeout(2000)
+            _harvest()
+        except Exception:
+            break
 
     return jobs

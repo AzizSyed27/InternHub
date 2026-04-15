@@ -26,7 +26,6 @@ GREENHOUSE_COMPANIES = {
     # Verify slugs at: boards.greenhouse.io/{slug}
     # Remove or update any that return 404 — companies switch ATS over time.
     "Faire":        "faire",
-    # "HubSpot":   "hubspot",       # 0 jobs as of 2026-04 — may have moved off Greenhouse
     "Figma":        "figma",
     "Vercel":       "vercel",
     "Cloudflare":   "cloudflare",
@@ -36,18 +35,59 @@ GREENHOUSE_COMPANIES = {
     "Airbnb":       "airbnb",
     "Coinbase":     "coinbase",
     "MongoDB":      "mongodb",
-    "Anthropic":    "anthropic",   # confirmed 2026-04
-    "Stripe":       "stripe",      # confirmed 2026-04
-    # --- 404 as of 2026-04 — slug changed or company left Greenhouse ---
-    # "Shopify":      "shopify",       # check boards.greenhouse.io/shopify
-    # "Cohere":       "cohere44",      # verify slug
-    # "Wealthsimple": "wealthsimple",  # verify slug
-    # "Ada":          "ada",           # verify slug
-    # "ApplyBoard":   "applyboard",    # verify slug
-    # "Notion":       "notion",        # verify slug
-    # "Datadog":      "datadoghq",     # verify slug
-    # "OpenAI":       "openai",        # 404 on Greenhouse; check their jobs page
-    # "Databricks":   "databricks",    # 404 on Greenhouse; check their jobs page
+    "Anthropic":    "anthropic",
+    "Stripe":       "stripe",
+    "Databricks":   "databricks",  # confirmed 2026-04 — 14 intern jobs
+    "Asana":        "asana",       # confirmed 2026-04 — 7 intern jobs
+    "Carta":        "carta",       # confirmed 2026-04 — 7 intern jobs
+    "Robinhood":    "robinhood",   # confirmed 2026-04 — 7 intern jobs
+    "Twilio":       "twilio",      # confirmed 2026-04 — 5 intern jobs
+    "Scale AI":     "scaleai",     # confirmed 2026-04 — 4 intern jobs
+    "Brex":         "brex",        # confirmed 2026-04 — 2 intern jobs
+    "Duolingo":     "duolingo",    # confirmed 2026-04 — 2 intern jobs
+    "Mercury":      "mercury",     # confirmed 2026-04 — 2 intern jobs
+    "Dropbox":      "dropbox",     # confirmed 2026-04 — 1 intern job
+    # --- Toronto / Canadian companies (confirmed Greenhouse boards, 2026-04) ---
+    "Ritual":       "ritual",      # confirmed 2026-04 — Software Engineer Intern + Research Intern (Remote)
+    "Lightspeed":   "lightspeedhq", # confirmed 2026-04 — board active; intern jobs currently international only (Amsterdam); worth monitoring for Canadian postings
+    "Geotab":       "geotab",      # confirmed 2026-04 — Oakville (GTA) company; intern jobs currently international (Germany/UK); worth monitoring
+    # --- 0 jobs / empty board as of 2026-04 ---
+    # "HubSpot":      "hubspot",       # board exists but 0 total jobs
+    # "Ecobee":       "ecobee",        # Toronto IoT; board exists but 0 total jobs as of 2026-04
+    # "Benevity":     "benevity",      # Calgary/Toronto; board active, 20 jobs, 0 intern as of 2026-04
+    # "TouchBistro":  "touchbistro",   # Toronto; board active, 5 jobs, 0 intern as of 2026-04
+    # --- 404 as of 2026-04 — left Greenhouse, ATS unknown ---
+    # "Shopify":      "shopify",
+    # "OpenAI":       "openai",
+    # "Cohere":       "cohere44",
+    # "Wealthsimple": "wealthsimple",  # now on Lever (wealthsimple) and Ashby — both 0 jobs
+    # "Ada":          "ada",
+    # "ApplyBoard":   "applyboard",    # confirmed 404 on GH and Ashby as of 2026-04
+    # "Notion":       "notion",
+    # "Datadog":      "datadoghq",
+    # "Benchling":    "benchling",
+    # "Rippling":     "rippling",
+    # "Airtable":     "airtable",      # 404 on Greenhouse; try Ashby
+    # "Ramp":         "ramp",          # 404 on Greenhouse; try Ashby
+    # "Retool":       "retool",        # 404 on Greenhouse
+    # "Gusto":        "gusto",         # board exists but 0 intern jobs
+    # "Intercom":     "intercom",      # board exists but 0 intern jobs
+    # --- Toronto companies: no Greenhouse/Lever/Ashby board found — check custom portals ---
+    # "Clio":         "?",             # BC legaltech; not on GH/Lever/Ashby — check jobs.clio.com
+    # "Wattpad":      "?",             # Toronto; Lever board (wattpad) exists but 0 tech intern (WEBTOON/LA only)
+    # "D2L":          "?",             # Kitchener; Ashby board (d2l) exists but 0 jobs
+    # "Koho":         "?",             # Toronto fintech; not on GH/Lever — Ashby board (koho) exists, 0 jobs
+    # "FreshBooks":   "?",             # Toronto; Ashby board (freshbooks) exists, 0 jobs — check freshbooks.com/careers
+    # "Loopio":       "?",             # Toronto; Ashby board (loopio) exists, 0 jobs
+    # "Hootsuite":    "?",             # Vancouver; not on GH/Lever — Ashby board (hootsuite) 0 jobs, Lever timed out
+    # "PointClickCare":"?",            # Mississauga; not found on GH/Lever/Ashby — check Workday
+    # "Miovision":    "?",             # Waterloo; not found on GH/Lever — check their careers page
+    # "Magnet Forensics":"?",          # Ottawa; Lever board (magnetforensics) — 40 jobs, 0 intern
+    # "Achievers":    "?",             # Toronto; Lever board (achievers) — 18 jobs, 0 intern
+    # "Thomson Reuters":"?",           # Toronto; likely Workday — check careers.thomsonreuters.com
+    # "BlackBerry":   "?",             # Waterloo; likely Workday — check blackberry.com/careers
+    # "OpenText":     "?",             # Waterloo; not on GH — check Workday
+    # "Vidyard":      "?",             # Kitchener; not on GH/Lever/Ashby — check vidyard.com/careers
 }
 
 # ---------------------------------------------------------------------------
@@ -58,17 +98,18 @@ GREENHOUSE_COMPANIES = {
 LEVER_COMPANIES = {
     # Verify slugs at: jobs.lever.co/{slug}
     # Remove or update any that return 404 — companies switch ATS over time.
-    "Plaid":      "plaid",
-    # --- 404 as of 2026-04 — likely moved to Greenhouse or another ATS ---
-    # "Stripe":     "stripe",      # likely moved to Greenhouse: boards.greenhouse.io/stripe
-    # "OpenAI":     "openai",      # likely moved to Greenhouse: boards.greenhouse.io/openai
-    # "Anthropic":  "anthropic",   # likely moved to Greenhouse: boards.greenhouse.io/anthropic
-    # "Databricks": "databricks",  # verify on jobs.lever.co/databricks
-    # "Scale AI":   "scaleai",     # verify on jobs.lever.co/scaleai
-    # "Benchling":  "benchling",   # verify on jobs.lever.co/benchling
-    # "Asana":      "asana",       # verify on jobs.lever.co/asana
-    # "Brex":       "brex",        # verify on jobs.lever.co/brex
-    # "Rippling":   "rippling",    # verify on jobs.lever.co/rippling
+    "Plaid":      "plaid",       # confirmed 2026-04 — 94 total jobs, 0 intern currently
+    "Palantir":   "palantir",   # confirmed 2026-04 — 20 intern/co-op jobs
+    # --- 404 as of 2026-04 — moved to Greenhouse or another ATS ---
+    # "Stripe":     "stripe",      # moved to Greenhouse
+    # "OpenAI":     "openai",      # moved to Greenhouse or other
+    # "Anthropic":  "anthropic",   # moved to Greenhouse
+    # "Databricks": "databricks",  # moved to Greenhouse
+    # "Scale AI":   "scaleai",     # moved to Greenhouse
+    # "Benchling":  "benchling",   # 404 on Lever
+    # "Asana":      "asana",       # moved to Greenhouse
+    # "Brex":       "brex",        # moved to Greenhouse
+    # "Rippling":   "rippling",    # 404 on Lever
 }
 
 # ---------------------------------------------------------------------------
@@ -106,6 +147,8 @@ PLAYWRIGHT_JOBS_ENABLED = {
     "tesla":  False,  # Blocked by Cloudflare as of 2026-04 — returns Access Denied to headless Chromium
     "yc":     True,
     "google": True,   # Playwright response interceptor — old careers.google.com API deprecated 2026-04
+    "apple":  True,   # Playwright DOM scraper — /api/role/search (big_tech.py) is 404; /api/v1/search requires CSRF auth headless can't fulfill
+    "uber":   True,   # Playwright response interceptor — jobs.uber.com blocked by Cloudflare; www.uber.com accessible
 }
 
 # ---------------------------------------------------------------------------
@@ -249,6 +292,8 @@ SCRAPER_INTERVALS = {
     "meta":           30,
     "tesla":          60,
     "google":         30,
+    "apple":          30,
+    "uber":           30,
     "govt_canada":    240,
     "ontario_public": 240,
     "opg":            360,
