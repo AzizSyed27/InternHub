@@ -62,6 +62,12 @@ def scrape() -> list[Job]:
                 "Chromium (Cloudflare). Skipping. Re-test manually or find a public API."
             )
 
+        if PLAYWRIGHT_JOBS_ENABLED.get("google"):
+            try:
+                jobs.extend(_scrape_google(page))
+            except Exception as exc:
+                print(f"[playwright_jobs/google] WARNING: {exc}")
+
         browser.close()
     return jobs
 
@@ -129,6 +135,73 @@ def _scrape_meta(page) -> list[Job]:
                 "date_posted": "",
                 "description": "",
                 "source": "Meta",
+            }
+            if passes_filters(job, "big_tech"):
+                jobs.append(job)
+        except Exception:
+            continue
+
+    return jobs
+
+
+def _scrape_google(page) -> list[Job]:
+    """
+    Scrape Google internship listings via DOM parsing.
+
+    Google's careers page is an Angular SPA at:
+      https://www.google.com/about/careers/applications/jobs/results?employment_type=INTERN&q=software
+
+    The old careers.google.com/api/jobs/jobs-v1/search/ endpoint is deprecated (301 → 404).
+    Job data does not appear in any interceptable JSON response — it is rendered directly
+    into the DOM. We parse the rendered job cards instead.
+
+    DOM structure (confirmed 2026-04):
+      Job cards:    li.lLd3Je
+      Title:        h3.QJPWVe (inner text)
+      Link:         a[href] — relative path like "jobs/results/{id}-{slug}?..."
+      Location:     .wVoYLb inner text — "...\nplace\n{city, country}\nbar_chart\n..."
+    """
+    _BASE = "https://www.google.com/about/careers/applications/"
+    page.goto(
+        _BASE + "jobs/results?employment_type=INTERN&q=software",
+        wait_until="networkidle",
+        timeout=30000,
+    )
+    page.wait_for_timeout(2000)
+
+    cards = page.locator("li.lLd3Je").all()
+    if not cards:
+        print("[playwright_jobs/google] WARNING: 0 job cards found — selector li.lLd3Je may have changed")
+        return []
+
+    jobs: list[Job] = []
+    seen_urls: set[str] = set()
+    for card in cards:
+        try:
+            title = card.locator("h3.QJPWVe").inner_text().strip()
+            if not title:
+                continue
+            href = card.locator("a").first.get_attribute("href") or ""
+            if not href:
+                continue
+            # href is relative: "jobs/results/{id}-{slug}?..."  — strip query params
+            job_url = _BASE + href.split("?")[0]
+            if job_url in seen_urls:
+                continue
+            seen_urls.add(job_url)
+            # Location is in .wVoYLb text after the "place" icon marker
+            wv_text = card.locator(".wVoYLb").first.inner_text()
+            loc_parts = wv_text.split("place\n")
+            location = loc_parts[1].split("\n")[0].strip() if len(loc_parts) > 1 else ""
+            job: Job = {
+                "id": make_job_id("google", "Google", title, job_url),
+                "title": title,
+                "company": "Google",
+                "location": location,
+                "url": job_url,
+                "date_posted": "",
+                "description": "",
+                "source": "Google",
             }
             if passes_filters(job, "big_tech"):
                 jobs.append(job)

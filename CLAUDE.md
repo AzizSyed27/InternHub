@@ -75,9 +75,9 @@ Loop over `BIG_TECH_LOCATIONS`, make one request per location, merge and dedupli
 
 | Company | Endpoint | Status |
 |---|---|---|
-| Amazon | `https://www.amazon.jobs/en/search.json?base_query=software+intern&loc_query={location}` | ✅ Working |
+| Amazon | `https://www.amazon.jobs/en/search.json?base_query={query}&result_limit=100` | ✅ Working — queries `["software intern", "software internship"]` (no stemming); `loc_query` ignored by API |
 | Google | `https://careers.google.com/api/jobs/jobs-v1/search/?q=software+intern&location={location}` | ❌ Deprecated as of 2026-04 — no public replacement without auth |
-| Microsoft | `https://jobs.careers.microsoft.com/global/en/search?q=intern&lc={location}` | ❌ SSL hostname mismatch — re-test on different network |
+| Microsoft | `https://apply.careers.microsoft.com/api/pcsx/search?domain=microsoft.com&query={query}&start={offset}&num_jobs=100` | ✅ Working — Eightfold PCSX API; old jobs.careers.microsoft.com had SSL mismatch (fixed 2026-04) |
 | Apple | `https://jobs.apple.com/api/role/search` (POST) | ❌ Endpoint does not exist — needs Playwright |
 | Uber | `jobs.uber.com` | ❌ Stub — validate endpoint via DevTools first |
 
@@ -98,6 +98,7 @@ To add a new company: open their Workday careers page in DevTools → Network ta
 | Source | Scraper | Notes |
 |---|---|---|
 | Meta | `playwright_jobs.py` | ✅ Rewrote 2026-04: now intercepts GraphQL response at `/graphql` (old CSS selector broke on SPA redesign) |
+| Google | `playwright_jobs.py` | ✅ Added 2026-04: DOM scraper on `google.com/about/careers/applications/jobs/results?employment_type=INTERN&q=software`; job cards are `li.lLd3Je`, title `h3.QJPWVe`, link is relative href → prefixed with `/about/careers/applications/`, location from `.wVoYLb` text after `place\n` marker |
 | Tesla | `playwright_jobs.py` | ❌ Disabled 2026-04 — Cloudflare blocks headless Chromium (Access Denied). No public API found. |
 | Ontario Public Service | `ontario_public.py` | ❌ Disabled 2026-04 — old URL 404; new portal (gojobs.gov.on.ca) uses Radware CAPTCHA |
 | OPG | `opg.py` | ✅ Navigates directly to `/search?q={term}` — home page search input is CSS-hidden |
@@ -156,18 +157,23 @@ WORKDAY_COMPANIES = {
 BIG_TECH_ENABLED = {
     "amazon":    True,
     "google":    False,  # Public API deprecated — no replacement without auth
-    "microsoft": False,  # SSL hostname mismatch — re-test on different network
+    "microsoft": True,   # Eightfold PCSX API — apply.careers.microsoft.com/api/pcsx/search — confirmed 2026-04
     "apple":     False,  # No public JSON API — needs Playwright
     "uber":      False,  # Stub — validate endpoint via DevTools on jobs.uber.com first
 }
 
 PLAYWRIGHT_JOBS_ENABLED = {
-    "meta":  True,
-    "tesla": False,  # Cloudflare blocks headless Chromium as of 2026-04
-    "yc":    True,
+    "meta":   True,
+    "tesla":  False,  # Cloudflare blocks headless Chromium as of 2026-04
+    "yc":     True,
+    "google": True,   # DOM scraper — old careers.google.com API deprecated 2026-04
 }
 
 BIG_TECH_LOCATIONS = ["canada", "united states", "usa", "us", "remote"]
+# NOTE: BIG_TECH_LOCATIONS and BIG_TECH_SEARCH_QUERY are no longer used by Amazon.
+# Amazon's loc_query parameter is silently ignored (any value returns the same results).
+# Amazon also requires two separate queries — see _AMAZON_QUERIES in big_tech.py.
+# BIG_TECH_SEARCH_QUERY is still used by the Google/Microsoft/Apple scrapers.
 BIG_TECH_SEARCH_QUERY = "software intern"
 
 PUBLIC_SECTOR_ENABLED = {
@@ -230,6 +236,7 @@ SCRAPER_INTERVALS = {
     "yc":             60,
     "meta":           30,
     "tesla":          60,
+    "google":         30,
     "govt_canada":    240,
     "ontario_public": 240,
     "opg":            360,
@@ -291,6 +298,7 @@ These scrapers parse HTML or DOM structure directly and are most likely to break
 | Hacker News Who's Hiring | `hackernews.py` | ✅ | Parses HN comment HTML. HN rarely changes layout, but format shift = silent 0 results. | — |
 | YC Work at a Startup | `yc.py` | ✅ | Already broke once (HTTP 500 on `/jobs.json` 2026-04). Now Playwright on `workatastartup.com/jobs`. CSS selectors could break on redesign. | 2026-04 |
 | Meta careers | `playwright_jobs.py` | ✅ | Rewrote 2026-04 to intercept GraphQL response instead of CSS selector (SPA redesign broke old approach). Response key `job_search_with_featured_jobs.all_jobs` could change. | 2026-04 |
+| Google careers | `playwright_jobs.py` | ✅ | Added 2026-04: DOM scraper. Selectors `li.lLd3Je` (cards), `h3.QJPWVe` (title), `.wVoYLb` (location). High risk — obfuscated CSS class names could change on any deploy. | 2026-04 |
 | Tesla careers | `playwright_jobs.py` | ❌ DISABLED | Cloudflare blocks headless Chromium as of 2026-04. No public API found. | 2026-04 |
 | Govt Canada | `govt_canada.py` | ✅ | Selector updated 2026-04: `table.resultTable tr` was wrong; now `a[href*='page1800']`. GC jobs uses "student" not "intern" in titles. | 2026-04 |
 | Ontario Public Service | `ontario_public.py` | ❌ DISABLED | gojobs.gov.on.ca (new OPS portal) uses Radware CAPTCHA — blocks headless Chromium. | 2026-04 |
@@ -305,7 +313,11 @@ These scrapers parse HTML or DOM structure directly and are most likely to break
 
 ## Next Steps
 
-- **Google Jobs scraping** — scrape `jobs.google.com` for internship listings. The old `careers.google.com` API is deprecated. Need to identify the current internal API endpoint via DevTools on `jobs.google.com` (search for "intern", capture the XHR/fetch request). Likely a Playwright scraper or a new JSON API endpoint. Add to `big_tech.py` or a new `google_jobs.py`.
+- **Google pagination** — current Playwright DOM scraper returns ~18 results (one page). The careers page may have pagination or infinite scroll. Inspect the page for a "Next" button or scroll-to-load and extend `_scrape_google()` if needed.
+- **Apple scraper** — `BIG_TECH_ENABLED["apple"]` is disabled; `jobs.apple.com/api/role/search` (POST) returns 404. Find the real endpoint via DevTools on `jobs.apple.com`, then implement `_scrape_apple()` in `big_tech.py`.
+- **Uber scraper** — `BIG_TECH_ENABLED["uber"]` is disabled; `_scrape_uber()` is a stub. Find the XHR endpoint via DevTools on `jobs.uber.com`, implement and enable.
+- **Verify Greenhouse companies** — confirm each slug in `GREENHOUSE_COMPANIES` still resolves at `boards.greenhouse.io/{slug}` and that the company still posts jobs there. Some may have migrated to Lever, Workday, or their own ATS.
+- **Verify Lever companies** — same check: confirm each slug in `LEVER_COMPANIES` still resolves at `jobs.lever.co/{slug}`.
 
 ---
 
@@ -416,8 +428,11 @@ ANTHROPIC_API_KEY=sk-ant-...
 - **`"github"` tier bypasses location filter** — same mechanism as `"big_tech"` tier; SimplifyJobs is a curated global list so location filtering would drop valid US/remote postings
 - **SimplifyJobs company names may have emoji prefixes** — FAANG-tier companies are tagged `🔥, Cloudflare` in the HTML; `APPLIED_COMPANIES` entries must match the exact parsed string; workaround is to rely on Greenhouse/Lever/Workday scrapers for those companies instead
 - **New-Grad-Positions disabled** — `SimplifyJobs/New-Grad-Positions` commented out of `GITHUB_REPOS` as of 2026-04; re-enable to include new-grad roles
+- **Microsoft careers moved to Eightfold AI (2026-04)** — old `jobs.careers.microsoft.com/global/en/search` had SSL hostname mismatch and is effectively deprecated. New portal is `apply.careers.microsoft.com`, powered by Eightfold AI. The public PCSX search API (`/api/pcsx/search?domain=microsoft.com&query=...&start=N&num_jobs=100`) requires no authentication. Response shape: `data.data.positions[].{id, name, locations[], postedTs, positionUrl}`. Job URL: `https://apply.careers.microsoft.com` + `positionUrl`. Supports pagination via `start` offset.
 - **Amazon schema changed 2026-04** — `data["hits"]` is now an integer count; job list is now `data["jobs"]` with flat fields (not nested under `fields`). Fixed in `big_tech.py`.
+- **Amazon uses two distinct search terms (2026-04)** — `base_query=software+intern` and `base_query=software+internship` return different job sets (no stemming). `_scrape_amazon()` queries both via `_AMAZON_QUERIES`. The `loc_query` parameter is silently ignored by Amazon's API (any value including nonexistent strings returns the same count) — location loop removed; one request per query with `result_limit=100`.
 - **Meta careers redesigned 2026-04** — CSS selector approach broke; `playwright_jobs.py` now intercepts the GraphQL response at `/graphql` and parses `data.job_search_with_featured_jobs.all_jobs`. Job URLs: `metacareers.com/jobs/{id}/`.
+- **Google careers Playwright scraper added 2026-04** — old `careers.google.com/api/jobs/jobs-v1/search/` deprecated (301 → 404 at new path). No interceptable JSON API — job data is rendered directly into the DOM. Scraper parses `li.lLd3Je` cards at `google.com/about/careers/applications/jobs/results?employment_type=INTERN&q=software`. Title: `h3.QJPWVe`; location: `.wVoYLb` text after `place\n` marker; URL: relative href prefixed with base. Returns ~18 results (one page). CSS class names are obfuscated and may change on Google deploys — high fragility risk.
 - **Tesla blocked 2026-04** — Cloudflare returns "Access Denied" to headless Chromium. No public API. Disabled in `PLAYWRIGHT_JOBS_ENABLED`.
 - **Ontario Public Service broken 2026-04** — old ontario.ca URL is 404; new portal (gojobs.gov.on.ca) uses Radware CAPTCHA. Disabled in `PUBLIC_SECTOR_ENABLED`.
 - **City of Toronto URL changed 2026-04** — old `toronto.ca/city-government/...` is 404; scraper now uses `jobs.toronto.ca/jobsatcity/search/?q=intern` with `a[href*='/job/']` selector.

@@ -110,6 +110,7 @@ def _load_scrapers() -> dict:
         SCRAPER_INTERVALS["playwright_jobs"] = min(
             SCRAPER_INTERVALS.get("meta", 30),
             SCRAPER_INTERVALS.get("tesla", 60),
+            SCRAPER_INTERVALS.get("google", 30),
         )
 
     return scrapers

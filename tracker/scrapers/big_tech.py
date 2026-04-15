@@ -60,14 +60,22 @@ def scrape() -> list[Job]:
 # Amazon
 # ---------------------------------------------------------------------------
 
+# Amazon's API does exact keyword matching (no stemming): "intern" and "internship"
+# return different result sets and both are needed to catch all intern postings.
+# The loc_query parameter is ignored by Amazon's API (confirmed 2026-04 — any value
+# including nonexistent locations returns the same result count), so we query once
+# per search term without location filtering.
+_AMAZON_QUERIES = ["software intern", "software internship"]
+
+
 def _scrape_amazon() -> list[Job]:
     jobs: list[Job] = []
-    for location in BIG_TECH_LOCATIONS:
+    seen_urls: set[str] = set()
+    for query in _AMAZON_QUERIES:
         try:
             params = urllib.parse.urlencode({
-                "base_query": BIG_TECH_SEARCH_QUERY,
-                "loc_query": location,
-                "result_limit": 20,
+                "base_query": query,
+                "result_limit": 100,
             })
             url = f"https://www.amazon.jobs/en/search.json?{params}"
             req = urllib.request.Request(url, headers=_HEADERS)
@@ -91,10 +99,11 @@ def _scrape_amazon() -> list[Job]:
                     "description": description[:500],
                     "source": "BigTech",
                 }
-                if passes_filters(job, "big_tech"):
+                if job["url"] not in seen_urls and passes_filters(job, "big_tech"):
+                    seen_urls.add(job["url"])
                     jobs.append(job)
         except Exception as exc:
-            print(f"[big_tech/amazon] WARNING: location={location}: {exc}")
+            print(f"[big_tech/amazon] WARNING: query={query!r}: {exc}")
     return jobs
 
 
@@ -143,42 +152,75 @@ def _scrape_google() -> list[Job]:
 # ---------------------------------------------------------------------------
 
 def _scrape_microsoft() -> list[Job]:
+    """
+    Scrape Microsoft internship listings via the Eightfold PCSX search API.
+
+    apply.careers.microsoft.com is powered by Eightfold AI. The PCSX search endpoint
+    is publicly accessible without authentication.
+
+    Endpoint (confirmed 2026-04):
+      GET https://apply.careers.microsoft.com/api/pcsx/search
+    Response: {"status": 200, "data": {"positions": [...], "count": N}}
+    Position fields: id, name, locations (list), postedTs (unix ts), positionUrl
+    Job URL: https://apply.careers.microsoft.com{positionUrl}
+    """
     jobs: list[Job] = []
-    for location in BIG_TECH_LOCATIONS:
+    seen_ids: set[str] = set()
+    start = 0
+    page_size = 100
+    while True:
         try:
             params = urllib.parse.urlencode({
-                "q": "intern",
-                "lc": location,
-                "l": "en_us",
-                "pg": 1,
-                "pgSz": 20,
+                "domain": "microsoft.com",
+                "query": BIG_TECH_SEARCH_QUERY,
+                "location": "",
+                "start": start,
+                "num_jobs": page_size,
             })
-            url = f"https://jobs.careers.microsoft.com/global/en/search?{params}"
+            url = f"https://apply.careers.microsoft.com/api/pcsx/search?{params}"
             req = urllib.request.Request(url, headers=_HEADERS)
             with urllib.request.urlopen(req, timeout=15) as resp:
                 data = json.loads(resp.read().decode())
-            result = data.get("operationResult", {}).get("result", {})
-            for item in result.get("jobs", []):
-                title = item.get("title", "")
-                job_id = item.get("jobId", "")
-                job_url = f"https://jobs.careers.microsoft.com/global/en/job/{job_id}/"
-                loc = item.get("primaryWorkLocation", "")
-                description = item.get("description", "") or ""
-                posted = item.get("postingDate", "") or ""
-                job: Job = {
-                    "id": make_job_id("microsoft", "Microsoft", title, job_url),
-                    "title": title,
-                    "company": "Microsoft",
-                    "location": loc,
-                    "url": job_url,
-                    "date_posted": posted[:10] if posted else "",
-                    "description": description[:500],
-                    "source": "BigTech",
-                }
-                if passes_filters(job, "big_tech"):
-                    jobs.append(job)
         except Exception as exc:
-            print(f"[big_tech/microsoft] WARNING: location={location}: {exc}")
+            print(f"[big_tech/microsoft] WARNING: {exc}")
+            break
+
+        positions = data.get("data", {}).get("positions", [])
+        if not positions:
+            break
+        for item in positions:
+            pos_id = str(item.get("id", ""))
+            title = item.get("name", "")
+            if not pos_id or not title or pos_id in seen_ids:
+                continue
+            seen_ids.add(pos_id)
+            locs = item.get("locations", [])
+            location = locs[0] if locs else ""
+            pos_url = item.get("positionUrl", f"/careers/job/{pos_id}")
+            job_url = "https://apply.careers.microsoft.com" + pos_url
+            posted_ts = item.get("postedTs")
+            if posted_ts:
+                from datetime import datetime, timezone
+                posted = datetime.fromtimestamp(posted_ts, tz=timezone.utc).strftime("%Y-%m-%d")
+            else:
+                posted = ""
+            job: Job = {
+                "id": make_job_id("microsoft", "Microsoft", title, job_url),
+                "title": title,
+                "company": "Microsoft",
+                "location": location,
+                "url": job_url,
+                "date_posted": posted,
+                "description": "",
+                "source": "BigTech",
+            }
+            if passes_filters(job, "big_tech"):
+                jobs.append(job)
+
+        total = data.get("data", {}).get("count", 0)
+        start += len(positions)
+        if start >= total or len(positions) < page_size:
+            break
     return jobs
 
 

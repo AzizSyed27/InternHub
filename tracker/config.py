@@ -91,7 +91,7 @@ WORKDAY_COMPANIES = {
 BIG_TECH_ENABLED = {
     "amazon":    True,
     "google":    False,  # Public API deprecated as of 2026-04 — no replacement without authentication
-    "microsoft": False,  # SSL hostname mismatch — re-test on a different network; endpoint may have changed
+    "microsoft": True,   # Eightfold API — microsoftai.eightfold.ai/api/apply/v2/jobs — confirmed 2026-04
     "apple":     False,  # No public JSON API — jobs.apple.com/api/role/search does not exist; use Playwright instead
     "uber":      False,  # Stub — validate endpoint via DevTools on jobs.uber.com first
 }
@@ -102,9 +102,10 @@ BIG_TECH_ENABLED = {
 # Set to False to skip a scraper without uninstalling Playwright.
 # ---------------------------------------------------------------------------
 PLAYWRIGHT_JOBS_ENABLED = {
-    "meta":  True,
-    "tesla": False,  # Blocked by Cloudflare as of 2026-04 — returns Access Denied to headless Chromium
-    "yc":    True,
+    "meta":   True,
+    "tesla":  False,  # Blocked by Cloudflare as of 2026-04 — returns Access Denied to headless Chromium
+    "yc":     True,
+    "google": True,   # Playwright response interceptor — old careers.google.com API deprecated 2026-04
 }
 
 # ---------------------------------------------------------------------------
@@ -247,6 +248,7 @@ SCRAPER_INTERVALS = {
     "yc":             60,
     "meta":           30,
     "tesla":          60,
+    "google":         30,
     "govt_canada":    240,
     "ontario_public": 240,
     "opg":            360,
