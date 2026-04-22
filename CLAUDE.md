@@ -106,7 +106,7 @@ To add a new company: open their Workday careers page in DevTools → Network ta
 | OPG | `opg.py` | ✅ Navigates directly to `/search?q={term}` — home page search input is CSS-hidden |
 | City of Toronto | `city_toronto.py` | ✅ Updated URL 2026-04: old `toronto.ca/...` was 404; now `jobs.toronto.ca/jobsatcity/search/?q=intern` |
 | Govt Canada | `govt_canada.py` | ✅ Updated selector 2026-04: `table.resultTable tr` matched nothing; now `a[href*='page1800']` |
-| YC Work at a Startup | `yc.py` | ✅ Playwright only — `/jobs.json` endpoint returned HTTP 500 as of 2026-04; navigates `workatastartup.com/jobs?q=intern` |
+| YC Work at a Startup | `yc.py` | ✅ Authenticated DOM scraper on `workatastartup.com/internships` — logs in via `account.ycombinator.com` (YC_EMAIL/YC_PASSWORD in .env) to unlock full listing (~44 raw jobs); falls back to 15 without credentials; location filter bypassed (tier="github"); old `/jobs.json` was HTTP 500 as of 2026-04 |
 
 **Community Sources (stdlib only)**
 
@@ -314,7 +314,7 @@ These scrapers parse HTML or DOM structure directly and are most likely to break
 |---|---|---|---|---|
 | SimplifyJobs repos | `github_repos.py` | ✅ | Switched markdown→HTML tables 2026-04 (fixed). Could change again. | 2026-04 |
 | Hacker News Who's Hiring | `hackernews.py` | ✅ | Parses HN comment HTML. HN rarely changes layout, but format shift = silent 0 results. | — |
-| YC Work at a Startup | `yc.py` | ✅ | Already broke once (HTTP 500 on `/jobs.json` 2026-04). Now Playwright on `workatastartup.com/jobs`. CSS selectors could break on redesign. | 2026-04 |
+| YC Work at a Startup | `yc.py` | ✅ | Authenticated DOM scraper on `workatastartup.com/internships`. Login via `#ycid-input` + `#password-input` on `account.ycombinator.com/authenticate`. Two DOM layouts: logged-in uses `img[alt]` for company name; logged-out uses `span.font-bold`. Location from first `<span>` in metadata div. If 0 jobs, check selectors or verify credentials. | 2026-04 |
 | Meta careers | `playwright_jobs.py` | ✅ | Rewrote 2026-04 to intercept GraphQL response instead of CSS selector (SPA redesign broke old approach). Response key `job_search_with_featured_jobs.all_jobs` could change. | 2026-04 |
 | Google careers | `playwright_jobs.py` | ✅ | Added 2026-04: DOM scraper. Selectors `li.lLd3Je` (cards), `h3.QJPWVe` (title), `.wVoYLb` (location). High risk — obfuscated CSS class names could change on any deploy. | 2026-04 |
 | Apple careers | `playwright_jobs.py` | ✅ | Added 2026-04: DOM scraper. `ul#search-job-list a[href*='/details/']`; deduped via `.job-posted-date` sibling; `wait_until="load"` + `wait_for_selector` (networkidle never resolves — persistent analytics connections). Pagination via `[aria-label="Next Page"]`. | 2026-04 |
@@ -337,7 +337,7 @@ These scrapers parse HTML or DOM structure directly and are most likely to break
 - **Uber pagination** — current Playwright response interceptor captures whatever the SPA loads on first render. If there are more than one page of intern results, check whether the page has a "Load more" or pagination control and extend `_scrape_uber()` accordingly.
 - **Find ATS for 404 Greenhouse companies** — the following were on Greenhouse but are now 404; find where they moved and add them back: Shopify, OpenAI, Cohere, Ada, Notion, Datadog, Benchling, Rippling, Airtable, Ramp. Check Ashby (`jobs.ashbyhq.com/{slug}`), Workday, or their own careers page.
 - **Check Ashby ATS** — several companies that left Greenhouse/Lever have moved to Ashby (e.g., Ramp, Airtable, Linear, Retool). Ashby has a public API at `jobs.ashbyhq.com/api/non-user-graphql` — worth implementing a new `ashby.py` Tier 1 scraper if enough target companies use it.
-- **YC scraper returning 0** — `workatastartup.com/jobs?q=intern` returned 0 jobs in last test (2026-04); CSS selectors or page structure may have changed. Inspect and fix if YC is a priority source.
+- **YC scraper** — Fixed and authenticated 2026-04. Now scrapes `workatastartup.com/internships` with YC login. If returning 0, check credentials in `.env` (`YC_EMAIL`/`YC_PASSWORD`) and verify `#ycid-input` / `#password-input` selectors on `account.ycombinator.com/authenticate` still exist.
 - **Toronto/GTA company Workday check** — Thomson Reuters, PointClickCare (Mississauga), BlackBerry (Waterloo), OpenText (Waterloo) likely use Workday; find their tenant slugs via DevTools on their careers pages and add to `WORKDAY_COMPANIES`.
 
 ### Toronto / Scarborough / GTA Company Research (2026-04)
@@ -450,6 +450,10 @@ EMAIL_SENDER=your.gmail@gmail.com
 EMAIL_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx
 EMAIL_RECIPIENT=your.email@gmail.com
 
+# YC Work at a Startup — optional, unlocks full listing (~44 raw jobs vs 15 without login)
+YC_EMAIL=your.yc@email.com
+YC_PASSWORD=your_yc_password
+
 # Tool 2
 LINKEDIN_EMAIL=your.linkedin@email.com
 LINKEDIN_PASSWORD=your_linkedin_password
@@ -482,7 +486,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 - **Workday URL format** — job links require `/en-US/{site}` prefix before `externalPath`; Referer header and `appliedFacets: {}` in POST body are required
 - **OPG search** — home page search input is CSS-hidden; scraper navigates directly to `/search?q={term}`
 - **Govt Canada** — RSS feed (page2710) removed 2026-04; scraper uses Playwright on page2440; selector is `a[href*='page1800']` (job detail links); GC Jobs uses "student" not "intern" in titles — added "student" to `KEYWORDS_INCLUDE` and `GOVT_CANADA_KEYWORDS`; uses `urllib.parse.quote` (NOT `urllib.request.quote`)
-- **YC Work at a Startup** — `/jobs.json` endpoint returned HTTP 500 as of 2026-04; converted to Playwright scraper navigating `workatastartup.com/jobs?q=intern`; gated by `PLAYWRIGHT_JOBS_ENABLED["yc"]`
+- **YC Work at a Startup** — `/jobs.json` HTTP 500 as of 2026-04; converted to authenticated Playwright DOM scraper on `workatastartup.com/internships`. No XHR API — data is server-rendered. Login flow: `account.ycombinator.com/authenticate` → `#ycid-input` (email) + `#password-input` → submit → `wait_for_load_state("load")` → navigate to `/internships` (session cookie carries over; redirect doesn't auto-follow). Two DOM layouts depending on auth state: logged-in company name is in `a[href*='/companies/'] img[alt]` (text node is empty — only the img alt has the name); logged-out uses `span.font-bold`. Location from first `<span>` in metadata div after job title, with •-bullet fallback. `wait_until="load"` + 3s delay (networkidle never resolves on SPA). `/companies?jobType=intern` URL investigated but shows all jobs at intern-hiring companies (not intern-only) — `/internships` is the correct dedicated page. Location filter bypassed via `tier="github"` (same as SimplifyJobs). Credentials optional — falls back to 15 unauthenticated jobs if `YC_EMAIL`/`YC_PASSWORD` absent. Gated by `PLAYWRIGHT_JOBS_ENABLED["yc"]`
 - **`github_repos.py` uses `html.parser`** — SimplifyJobs switched README format from markdown pipe tables to HTML `<table>` in 2026-04; parser rewritten using stdlib `html.parser`; no new dependencies
 - **`"github"` tier bypasses location filter** — same mechanism as `"big_tech"` tier; SimplifyJobs is a curated global list so location filtering would drop valid US/remote postings
 - **SimplifyJobs company names may have emoji prefixes** — FAANG-tier companies are tagged `🔥, Cloudflare` in the HTML; `APPLIED_COMPANIES` entries must match the exact parsed string; workaround is to rely on Greenhouse/Lever/Workday scrapers for those companies instead
