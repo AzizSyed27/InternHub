@@ -107,6 +107,7 @@ To add a new company: open their Workday careers page in DevTools → Network ta
 | City of Toronto | `city_toronto.py` | ✅ Updated URL 2026-04: old `toronto.ca/...` was 404; now `jobs.toronto.ca/jobsatcity/search/?q=intern` |
 | Govt Canada | `govt_canada.py` | ✅ Updated selector 2026-04: `table.resultTable tr` matched nothing; now `a[href*='page1800']` |
 | YC Work at a Startup | `yc.py` | ✅ Authenticated DOM scraper on `workatastartup.com/internships` — logs in via `account.ycombinator.com` (YC_EMAIL/YC_PASSWORD in .env) to unlock full listing (~44 raw jobs); falls back to 15 without credentials; location filter bypassed (tier="github"); old `/jobs.json` was HTTP 500 as of 2026-04 |
+| intern-list.com | `playwright_jobs.py` | ✅ Added 2026-04: DOM scraper on Jobright embed pages — US: `jobright.ai/minisites-jobs/intern/us/swe?embed=true`, Canada: `jobright.ai/minisites-jobs/intern/ca/swe?embed=true`; rows: `tr[data-index]`, title: `td[1]`, location: `td[5]`, company: `td[6]`, apply link: `a[href*='/jobs/info/']`; virtual scroll via nearest `overflow-y:auto` ancestor; returns ~900 jobs (US + Canada); location filter bypassed (tier="github", aggregate board like SimplifyJobs); "Multi Locations: X; Y" prefix stripped to first location |
 
 **Community Sources (stdlib only)**
 
@@ -179,12 +180,13 @@ BIG_TECH_ENABLED = {
 }
 
 PLAYWRIGHT_JOBS_ENABLED = {
-    "meta":   True,
-    "tesla":  False,  # Cloudflare blocks headless Chromium as of 2026-04
-    "yc":     True,
-    "google": True,   # DOM scraper — old careers.google.com API deprecated 2026-04
-    "apple":  True,   # DOM scraper — /api/role/search is 404; /api/v1/search requires CSRF auth headless can't fulfill
-    "uber":   True,   # Response interceptor — jobs.uber.com Cloudflare-blocked; www.uber.com accessible
+    "meta":        True,
+    "tesla":       False,  # Cloudflare blocks headless Chromium as of 2026-04
+    "yc":          True,
+    "google":      True,   # DOM scraper — old careers.google.com API deprecated 2026-04
+    "apple":       True,   # DOM scraper — /api/role/search is 404; /api/v1/search requires CSRF auth headless can't fulfill
+    "uber":        True,   # Response interceptor — jobs.uber.com Cloudflare-blocked; www.uber.com accessible
+    "intern_list": True,   # DOM scraper on jobright.ai embed pages — US + Canada SWE intern tabs; added 2026-04
 }
 
 BIG_TECH_LOCATIONS = ["canada", "united states", "usa", "us", "remote"]
@@ -257,6 +259,7 @@ SCRAPER_INTERVALS = {
     "google":         30,
     "apple":          30,
     "uber":           30,
+    "intern_list":    30,
     "govt_canada":    240,
     "ontario_public": 240,
     "opg":            360,
@@ -327,6 +330,7 @@ These scrapers parse HTML or DOM structure directly and are most likely to break
 | Ontario Public Service | `ontario_public.py` | ❌ DISABLED | gojobs.gov.on.ca (new OPS portal) uses Radware CAPTCHA — blocks headless Chromium. | 2026-04 |
 | OPG | `opg.py` | ✅ | Playwright, navigates directly to `/search?q=` (home search is CSS-hidden). | 2026-04 |
 | City of Toronto | `city_toronto.py` | ✅ | URL updated 2026-04: old `toronto.ca/city-government/...` is 404; now `jobs.toronto.ca/jobsatcity/search/?q=intern`. | 2026-04 |
+| intern-list.com | `playwright_jobs.py` | ✅ | Added 2026-04: DOM scraper on `jobright.ai/minisites-jobs/intern/{us\|ca}/swe?embed=true`. Rows: `tr[data-index]`, apply: `a[href*='/jobs/info/']`. Virtual scroll via nearest `overflow-y:auto` ancestor. CSS module class names (`index_bodyViewport`, `index_tableRow`) may change — `tr[data-index]` and `/jobs/info/` href are stable. If 0 jobs, check if `tr[data-index]` still exists on the embed page. | 2026-04 |
 
 **How to spot a broken scraper:** `main.py` now logs `[scraper_name] N jobs returned, M new` for every run. A scraper returning 0 that used to return results is a signal to investigate.
 
@@ -505,6 +509,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 - **Ontario Public Service broken 2026-04** — old ontario.ca URL is 404; new portal (gojobs.gov.on.ca) uses Radware CAPTCHA. Disabled in `PUBLIC_SECTOR_ENABLED`.
 - **City of Toronto URL changed 2026-04** — old `toronto.ca/city-government/...` is 404; scraper now uses `jobs.toronto.ca/jobsatcity/search/?q=intern` with `a[href*='/job/']` selector.
 - **main.py per-scraper logging** — each scraper now prints `[name] N jobs returned, M new` every run for diagnostics.
+- **intern-list.com added 2026-04** — DOM scraper on Jobright embed pages. The `?k=swe` landing page embeds jobright.ai iframes (not Airtable); the Canada tab also loads via `jobright.ai/minisites-jobs/intern/ca/swe?embed=true`. Navigates directly to the iframe URLs to avoid tab interactions. Table uses virtual scroll — only ~22 rows visible at a time; scrolling the nearest `overflow-y:auto` ancestor loads more. Row selector `tr[data-index]` is stable (data attribute); CSS module class names on cells are obfuscated and may change. Job URLs: `jobright.ai/jobs/info/{id}` (UTM params stripped). Returns ~900 jobs (US + Canada combined). `tier="github"` — aggregate curated board, same as SimplifyJobs; location filter bypassed.
 
 ---
 

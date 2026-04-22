@@ -91,6 +91,12 @@ def scrape() -> list[Job]:
             except Exception as exc:
                 print(f"[playwright_jobs/uber] WARNING: {exc}")
 
+        if PLAYWRIGHT_JOBS_ENABLED.get("intern_list"):
+            try:
+                jobs.extend(_scrape_intern_list(page))
+            except Exception as exc:
+                print(f"[playwright_jobs/intern_list] WARNING: {exc}")
+
         browser.close()
     return jobs
 
@@ -469,5 +475,113 @@ def _scrape_apple(page) -> list[Job]:
             _harvest()
         except Exception:
             break
+
+    return jobs
+
+
+def _scrape_intern_list(page) -> list[Job]:
+    """
+    Scrape intern-list.com SWE internship listings (US + Canada) via DOM parsing.
+
+    intern-list.com (powered by Jobright) embeds job tables from jobright.ai.
+    We navigate directly to the embed URLs to avoid dealing with tab interactions.
+
+    Embed URLs (confirmed 2026-04):
+      US:     https://jobright.ai/minisites-jobs/intern/us/swe?embed=true
+      Canada: https://jobright.ai/minisites-jobs/intern/ca/swe?embed=true
+
+    DOM structure (confirmed 2026-04):
+      Rows:     tr[data-index]             — stable data attribute; virtual scroll
+      Title:    td:nth-child(2) innerText  — cell index 1
+      Location: td:nth-child(6) innerText  — cell index 5 (may have "Multi Locations: ..." prefix)
+      Company:  td:nth-child(7) innerText  — cell index 6
+      Apply:    a[href*="/jobs/info/"]     — links to jobright.ai job detail page
+
+    Pagination: virtual scroll — table renders ~20 rows per viewport.
+    Scroll the nearest overflow container until no new rows appear.
+
+    Tier: "github" (same as SimplifyJobs — aggregate curated board; bypass location filter).
+    Job URLs: jobright.ai/jobs/info/{id} (UTM params stripped).
+    """
+    _EMBED_URLS = [
+        "https://jobright.ai/minisites-jobs/intern/us/swe?embed=true",
+        "https://jobright.ai/minisites-jobs/intern/ca/swe?embed=true",
+    ]
+    _MAX_SCROLL_ROUNDS = 30
+
+    jobs: list[Job] = []
+    seen_hrefs: set[str] = set()
+
+    for embed_url in _EMBED_URLS:
+        page.goto(embed_url, wait_until="networkidle", timeout=30000)
+        page.wait_for_selector("tr[data-index]", state="visible", timeout=15000)
+        page.wait_for_timeout(1000)
+
+        def _harvest():
+            items = page.evaluate("""() => {
+                return [...document.querySelectorAll('tr[data-index]')].map(tr => {
+                    const cells = tr.querySelectorAll('td');
+                    const applyLink = tr.querySelector('a[href*="/jobs/info/"]');
+                    return {
+                        title:    cells[1] ? cells[1].innerText.trim() : '',
+                        location: cells[5] ? cells[5].innerText.trim() : '',
+                        company:  cells[6] ? cells[6].innerText.trim() : '',
+                        href:     applyLink ? applyLink.getAttribute('href') : null,
+                    };
+                }).filter(r => r.title && r.href);
+            }""")
+            for item in items:
+                href = item["href"].split("?")[0]  # strip UTM params for clean dedup key
+                if not href or href in seen_hrefs:
+                    continue
+                seen_hrefs.add(href)
+                title = item["title"]
+                company = item["company"] or "Unknown"
+                # "Multi Locations: Seattle, WA; United States" → "Seattle, WA"
+                location = item["location"] or ""
+                if location.startswith("Multi Locations: "):
+                    location = location[len("Multi Locations: "):].split(";")[0].strip()
+                job: Job = {
+                    "id": make_job_id("intern_list", company, title, href),
+                    "title": title,
+                    "company": company,
+                    "location": location,
+                    "url": href,
+                    "date_posted": "",
+                    "description": "",
+                    "source": "intern-list.com",
+                }
+                if passes_filters(job, "github"):
+                    jobs.append(job)
+
+        _harvest()
+
+        # Scroll the virtual table's viewport div to trigger row loading.
+        # Container is 2 levels above the table: div[overflowY=auto] (index_bodyViewport).
+        # Walks up the DOM to find the nearest scrollable ancestor as a fallback.
+        for _ in range(_MAX_SCROLL_ROUNDS):
+            prev = len(seen_hrefs)
+            page.evaluate("""() => {
+                const table = document.querySelector('tr[data-index]')?.closest('table');
+                let el = table?.parentElement;
+                while (el) {
+                    if (window.getComputedStyle(el).overflowY === 'auto') {
+                        el.scrollTop = el.scrollHeight;
+                        return;
+                    }
+                    el = el.parentElement;
+                }
+                window.scrollTo(0, document.body.scrollHeight);
+            }""")
+            page.wait_for_timeout(1500)
+            _harvest()
+            if len(seen_hrefs) == prev:
+                break  # no new rows loaded; reached end of virtual scroll
+
+    if not jobs:
+        print(
+            "[playwright_jobs/intern_list] WARNING: 0 jobs found — "
+            "check tr[data-index] selector on jobright.ai/minisites-jobs/intern/us/swe?embed=true"
+        )
 
     return jobs

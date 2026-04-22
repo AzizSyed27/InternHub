@@ -96,6 +96,7 @@ def _load_scrapers() -> dict:
     _try_register("yc",             "tracker.scrapers.yc")
     _try_register("meta",           "tracker.scrapers.playwright_jobs")   # shared module
     _try_register("tesla",          "tracker.scrapers.playwright_jobs")   # shared module
+    _try_register("intern_list",    "tracker.scrapers.playwright_jobs")   # shared module
     _try_register("govt_canada",    "tracker.scrapers.govt_canada")
     _try_register("ontario_public", "tracker.scrapers.ontario_public")
     _try_register("opg",            "tracker.scrapers.opg")
@@ -107,6 +108,7 @@ def _load_scrapers() -> dict:
     if "meta" in scrapers and "tesla" in scrapers:
         scrapers["playwright_jobs"] = scrapers.pop("meta")
         scrapers.pop("tesla", None)
+        scrapers.pop("intern_list", None)
         # Remap interval to the shortest of all Playwright scrapers
         SCRAPER_INTERVALS["playwright_jobs"] = min(
             SCRAPER_INTERVALS.get("meta", 30),
@@ -114,6 +116,7 @@ def _load_scrapers() -> dict:
             SCRAPER_INTERVALS.get("google", 30),
             SCRAPER_INTERVALS.get("apple", 30),
             SCRAPER_INTERVALS.get("uber", 30),
+            SCRAPER_INTERVALS.get("intern_list", 30),
         )
 
     return scrapers

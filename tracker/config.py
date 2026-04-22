@@ -144,12 +144,13 @@ BIG_TECH_ENABLED = {
 # Set to False to skip a scraper without uninstalling Playwright.
 # ---------------------------------------------------------------------------
 PLAYWRIGHT_JOBS_ENABLED = {
-    "meta":   True,
-    "tesla":  False,  # Blocked by Cloudflare as of 2026-04 — returns Access Denied to headless Chromium
-    "yc":     True,
-    "google": True,   # Playwright response interceptor — old careers.google.com API deprecated 2026-04
-    "apple":  True,   # Playwright DOM scraper — /api/role/search (big_tech.py) is 404; /api/v1/search requires CSRF auth headless can't fulfill
-    "uber":   True,   # Playwright response interceptor — jobs.uber.com blocked by Cloudflare; www.uber.com accessible
+    "meta":        True,
+    "tesla":       False,  # Blocked by Cloudflare as of 2026-04 — returns Access Denied to headless Chromium
+    "yc":          True,
+    "google":      True,   # Playwright response interceptor — old careers.google.com API deprecated 2026-04
+    "apple":       True,   # Playwright DOM scraper — /api/role/search (big_tech.py) is 404; /api/v1/search requires CSRF auth headless can't fulfill
+    "uber":        True,   # Playwright response interceptor — jobs.uber.com blocked by Cloudflare; www.uber.com accessible
+    "intern_list": True,   # DOM scraper on jobright.ai embed pages — both US and Canada SWE intern tabs; added 2026-04
 }
 
 # ---------------------------------------------------------------------------
@@ -295,6 +296,7 @@ SCRAPER_INTERVALS = {
     "google":         30,
     "apple":          30,
     "uber":           30,
+    "intern_list":    30,
     "govt_canada":    240,
     "ontario_public": 240,
     "opg":            360,
