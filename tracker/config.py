@@ -14,7 +14,8 @@
 # ---------------------------------------------------------------------------
 GITHUB_REPOS = [
     "SimplifyJobs/Summer2026-Internships",
-    #"SimplifyJobs/New-Grad-Positions",
+    "negarprh/Canadian-Tech-Internships-2026",  # markdown pipe table format
+    # "SimplifyJobs/New-Grad-Positions",  # disabled — intern-only mode
 ]
 
 # ---------------------------------------------------------------------------

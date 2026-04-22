@@ -1,16 +1,19 @@
 # tracker/scrapers/github_repos.py
 #
-# Parses SimplifyJobs internship/new-grad HTML tables from GitHub.
-# These repos maintain a README.md with an HTML table of job postings.
-# The scraper fetches the raw README and extracts rows from the <tbody>.
+# Parses internship HTML or markdown pipe tables from GitHub READMEs.
+# Supports two formats:
+#   HTML <table> — used by SimplifyJobs (switched from markdown in 2026-04)
+#   Markdown pipe tables — used by negarprh/Canadian-Tech-Internships-2026
 #
 # Supported repos (configured in config.py):
 #   SimplifyJobs/Summer2026-Internships
-#   SimplifyJobs/New-Grad-Positions
+#   negarprh/Canadian-Tech-Internships-2026
+#   SimplifyJobs/New-Grad-Positions  (disabled)
 #
-# Table column order: Company | Role | Location | Application | Age
-# The Application cell contains two links: [0] direct apply URL, [1] Simplify profile (skipped).
+# Table column order expected: Company | Role | Location | Apply | ...
+# The Apply cell must be column index 3 and contain at least one HTTP link.
 
+import re
 import urllib.request
 from html.parser import HTMLParser
 
@@ -72,6 +75,34 @@ class _TableParser(HTMLParser):
                     self._cell["text"] = stripped
 
 
+def _parse_markdown_table(content: str) -> list[list[dict]]:
+    """Parse GitHub-flavored markdown pipe tables into the same row/cell format as _TableParser."""
+    rows = []
+    lines = content.splitlines()
+    header_idx = None
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if not (stripped.startswith("|") and stripped.endswith("|")):
+            continue
+        if "---" in stripped:
+            continue
+        if header_idx is None:
+            header_idx = i
+            continue
+        if i == header_idx + 1:
+            continue
+        cells_raw = [c.strip() for c in stripped[1:-1].split("|")]
+        cells = []
+        for raw in cells_raw:
+            links = re.findall(r'\[.*?\]\((https?://[^)]+)\)', raw)
+            text = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', raw).strip()
+            cells.append({"text": text, "links": links})
+        if cells:
+            rows.append(cells)
+    return rows
+
+
 def scrape() -> list[Job]:
     jobs: list[Job] = []
     for repo in GITHUB_REPOS:
@@ -98,11 +129,15 @@ def _fetch_readme(repo: str) -> str:
 def _scrape_repo(repo: str) -> list[Job]:
     content = _fetch_readme(repo)
 
-    parser = _TableParser()
-    parser.feed(content)
+    if "<table" in content:
+        parser = _TableParser()
+        parser.feed(content)
+        rows = parser.rows
+    else:
+        rows = _parse_markdown_table(content)
 
     jobs: list[Job] = []
-    for row in parser.rows:
+    for row in rows:
         if len(row) < 4:
             continue
 

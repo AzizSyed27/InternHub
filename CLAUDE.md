@@ -113,6 +113,7 @@ To add a new company: open their Workday careers page in DevTools → Network ta
 | Source | Scraper | Notes |
 |---|---|---|
 | SimplifyJobs GitHub repos | `github_repos.py` | Uses `dev` branch, falls back to `main`; HTML `<table>` parser (switched from markdown pipe tables 2026-04); `New-Grad-Positions` currently disabled |
+| negarprh/Canadian-Tech-Internships-2026 | `github_repos.py` | Markdown pipe table format; `main` branch only (no dev); 5 columns: Company \| Role \| Location \| Apply \| Date Posted |
 | Hacker News Who's Hiring | `hackernews.py` | |
 
 ### config.py (current state as of 2026-04)
@@ -120,6 +121,7 @@ To add a new company: open their Workday careers page in DevTools → Network ta
 ```python
 GITHUB_REPOS = [
     "SimplifyJobs/Summer2026-Internships",
+    "negarprh/Canadian-Tech-Internships-2026",  # markdown pipe table format
     # "SimplifyJobs/New-Grad-Positions",  # disabled — intern-only mode
 ]
 
@@ -313,6 +315,7 @@ These scrapers parse HTML or DOM structure directly and are most likely to break
 | Scraper | File | Status | Risk | Last verified |
 |---|---|---|---|---|
 | SimplifyJobs repos | `github_repos.py` | ✅ | Switched markdown→HTML tables 2026-04 (fixed). Could change again. | 2026-04 |
+| Canadian Tech Internships 2026 | `github_repos.py` | ✅ | Markdown pipe table; added 2026-04. Selectors: column index 0–3 (Company/Role/Location/Apply). If 0 jobs, check repo still uses pipe table format. | 2026-04 |
 | Hacker News Who's Hiring | `hackernews.py` | ✅ | Parses HN comment HTML. HN rarely changes layout, but format shift = silent 0 results. | — |
 | YC Work at a Startup | `yc.py` | ✅ | Authenticated DOM scraper on `workatastartup.com/internships`. Login via `#ycid-input` + `#password-input` on `account.ycombinator.com/authenticate`. Two DOM layouts: logged-in uses `img[alt]` for company name; logged-out uses `span.font-bold`. Location from first `<span>` in metadata div. If 0 jobs, check selectors or verify credentials. | 2026-04 |
 | Meta careers | `playwright_jobs.py` | ✅ | Rewrote 2026-04 to intercept GraphQL response instead of CSS selector (SPA redesign broke old approach). Response key `job_search_with_featured_jobs.all_jobs` could change. | 2026-04 |
@@ -333,7 +336,7 @@ These scrapers parse HTML or DOM structure directly and are most likely to break
 
 ## Next Steps
 
-- **Find Canada-focused internship GitHub repos** — SimplifyJobs covers mostly US companies. Search GitHub for Canadian internship/co-op curated lists (e.g. search "canada internship 2026 site:github.com", "canadian co-op positions github"). If a repo maintains a markdown or HTML table of postings in the same format as SimplifyJobs, add it to `GITHUB_REPOS` in `config.py` — `github_repos.py` already handles both markdown pipe tables and HTML `<table>` formats. Candidates to investigate: any "Canada-Internships", "Canadian-Tech-Internships", or university-specific co-op boards maintained as GitHub repos.
+- **Find more Canada-focused internship GitHub repos** — `negarprh/Canadian-Tech-Internships-2026` added 2026-04 (markdown pipe table). Look for additional Canadian co-op boards; `github_repos.py` handles both HTML `<table>` and markdown pipe table formats automatically.
 - **Uber pagination** — current Playwright response interceptor captures whatever the SPA loads on first render. If there are more than one page of intern results, check whether the page has a "Load more" or pagination control and extend `_scrape_uber()` accordingly.
 - **Find ATS for 404 Greenhouse companies** — the following were on Greenhouse but are now 404; find where they moved and add them back: Shopify, OpenAI, Cohere, Ada, Notion, Datadog, Benchling, Rippling, Airtable, Ramp. Check Ashby (`jobs.ashbyhq.com/{slug}`), Workday, or their own careers page.
 - **Check Ashby ATS** — several companies that left Greenhouse/Lever have moved to Ashby (e.g., Ramp, Airtable, Linear, Retool). Ashby has a public API at `jobs.ashbyhq.com/api/non-user-graphql` — worth implementing a new `ashby.py` Tier 1 scraper if enough target companies use it.
@@ -487,7 +490,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 - **OPG search** — home page search input is CSS-hidden; scraper navigates directly to `/search?q={term}`
 - **Govt Canada** — RSS feed (page2710) removed 2026-04; scraper uses Playwright on page2440; selector is `a[href*='page1800']` (job detail links); GC Jobs uses "student" not "intern" in titles — added "student" to `KEYWORDS_INCLUDE` and `GOVT_CANADA_KEYWORDS`; uses `urllib.parse.quote` (NOT `urllib.request.quote`)
 - **YC Work at a Startup** — `/jobs.json` HTTP 500 as of 2026-04; converted to authenticated Playwright DOM scraper on `workatastartup.com/internships`. No XHR API — data is server-rendered. Login flow: `account.ycombinator.com/authenticate` → `#ycid-input` (email) + `#password-input` → submit → `wait_for_load_state("load")` → navigate to `/internships` (session cookie carries over; redirect doesn't auto-follow). Two DOM layouts depending on auth state: logged-in company name is in `a[href*='/companies/'] img[alt]` (text node is empty — only the img alt has the name); logged-out uses `span.font-bold`. Location from first `<span>` in metadata div after job title, with •-bullet fallback. `wait_until="load"` + 3s delay (networkidle never resolves on SPA). `/companies?jobType=intern` URL investigated but shows all jobs at intern-hiring companies (not intern-only) — `/internships` is the correct dedicated page. Location filter bypassed via `tier="github"` (same as SimplifyJobs). Credentials optional — falls back to 15 unauthenticated jobs if `YC_EMAIL`/`YC_PASSWORD` absent. Gated by `PLAYWRIGHT_JOBS_ENABLED["yc"]`
-- **`github_repos.py` uses `html.parser`** — SimplifyJobs switched README format from markdown pipe tables to HTML `<table>` in 2026-04; parser rewritten using stdlib `html.parser`; no new dependencies
+- **`github_repos.py` supports both HTML and markdown pipe tables** — SimplifyJobs uses HTML `<table>` (switched 2026-04); `negarprh/Canadian-Tech-Internships-2026` uses markdown pipe tables. Auto-detected: if `<table` in content → `_TableParser`; else → `_parse_markdown_table()`. Uses `re` (stdlib) for markdown link extraction. No new dependencies.
 - **`"github"` tier bypasses location filter** — same mechanism as `"big_tech"` tier; SimplifyJobs is a curated global list so location filtering would drop valid US/remote postings
 - **SimplifyJobs company names may have emoji prefixes** — FAANG-tier companies are tagged `🔥, Cloudflare` in the HTML; `APPLIED_COMPANIES` entries must match the exact parsed string; workaround is to rely on Greenhouse/Lever/Workday scrapers for those companies instead
 - **New-Grad-Positions disabled** — `SimplifyJobs/New-Grad-Positions` commented out of `GITHUB_REPOS` as of 2026-04; re-enable to include new-grad roles
