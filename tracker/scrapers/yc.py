@@ -111,6 +111,18 @@ def _scrape_playwright() -> list[Job]:
         page.goto(_JOBS_URL, wait_until="load", timeout=30000)
         page.wait_for_timeout(3000)
 
+        # Scroll to load all infinite-scroll content before extracting.
+        # The SPA renders jobs in batches as the user scrolls — without this,
+        # only the first ~12 cards (initial viewport) are captured.
+        prev_count = 0
+        for _ in range(25):
+            page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            page.wait_for_timeout(1500)
+            curr_count = page.evaluate("document.querySelectorAll(\"a[href*='/jobs/']\").length")
+            if curr_count == prev_count:
+                break
+            prev_count = curr_count
+
         items = page.evaluate("""() => {
             const results = [];
             const jobLinks = document.querySelectorAll("a[href*='/jobs/']");
