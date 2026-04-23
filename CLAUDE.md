@@ -108,6 +108,7 @@ To add a new company: open their Workday careers page in DevTools → Network ta
 | Govt Canada | `govt_canada.py` | ✅ Updated selector 2026-04: `table.resultTable tr` matched nothing; now `a[href*='page1800']` |
 | YC Work at a Startup | `yc.py` | ✅ Authenticated DOM scraper on `workatastartup.com/internships` — logs in via `account.ycombinator.com` (YC_EMAIL/YC_PASSWORD in .env) to unlock full listing (~44 raw jobs); falls back to 15 without credentials; location filter bypassed (tier="github"); old `/jobs.json` was HTTP 500 as of 2026-04 |
 | intern-list.com | `playwright_jobs.py` | ✅ Added 2026-04: DOM scraper on Jobright embed pages — US: `jobright.ai/minisites-jobs/intern/us/swe?embed=true`, Canada: `jobright.ai/minisites-jobs/intern/ca/swe?embed=true`; rows: `tr[data-index]`, title: `td[1]`, location: `td[5]`, company: `td[6]`, apply link: `a[href*='/jobs/info/']`; virtual scroll via nearest `overflow-y:auto` ancestor; returns ~900 jobs (US + Canada); location filter bypassed (tier="github", aggregate board like SimplifyJobs); "Multi Locations: X; Y" prefix stripped to first location |
+| Google for Jobs | `playwright_jobs.py` | ✅ Added 2026-04: DOM scraper on `google.com/search?q={q}&ibp=htl;jobs` (the aggregator vertical — NOT careers.google.com). Loops 3 SWE-intern queries. Semantic selectors only: `div[role="main"] [role="list"]` → `[role="listitem"]` → `[role="heading"][aria-level="3"]`. Reads company/location from card inner text (line after title; location = first `·`-separated segment). Clicks card → harvests `a[href^="http"]` with "apply" in aria-label or text → picks by priority (company-domain match → non-aggregator host → first). Bails on `/sorry/`, `consent.google.com`, recaptcha iframe, or "unusual traffic" text. Fragility tripwire: >30% empty-company → WARN + return []. `tier="github"` bypasses location filter. 4-hour SCRAPER_INTERVAL to minimize bot-detection exposure. |
 
 **Community Sources (stdlib only)**
 
@@ -187,6 +188,7 @@ PLAYWRIGHT_JOBS_ENABLED = {
     "apple":       True,   # DOM scraper — /api/role/search is 404; /api/v1/search requires CSRF auth headless can't fulfill
     "uber":        True,   # Response interceptor — jobs.uber.com Cloudflare-blocked; www.uber.com accessible
     "intern_list": True,   # DOM scraper on jobright.ai embed pages — US + Canada SWE intern tabs; added 2026-04
+    "google_jobs": True,   # Google for Jobs aggregator — google.com/search?...&ibp=htl;jobs; added 2026-04; 4-hour interval
 }
 
 BIG_TECH_LOCATIONS = ["canada", "united states", "usa", "us", "remote"]
@@ -260,6 +262,7 @@ SCRAPER_INTERVALS = {
     "apple":          30,
     "uber":           30,
     "intern_list":    30,
+    "google_jobs":    240,  # 4 hours — minimize Google bot-detection exposure
     "govt_canada":    240,
     "ontario_public": 240,
     "opg":            360,
@@ -331,6 +334,7 @@ These scrapers parse HTML or DOM structure directly and are most likely to break
 | OPG | `opg.py` | ✅ | Playwright, navigates directly to `/search?q=` (home search is CSS-hidden). | 2026-04 |
 | City of Toronto | `city_toronto.py` | ✅ | URL updated 2026-04: old `toronto.ca/city-government/...` is 404; now `jobs.toronto.ca/jobsatcity/search/?q=intern`. | 2026-04 |
 | intern-list.com | `playwright_jobs.py` | ✅ | Added 2026-04: DOM scraper on `jobright.ai/minisites-jobs/intern/{us\|ca}/swe?embed=true`. Rows: `tr[data-index]`, apply: `a[href*='/jobs/info/']`. Virtual scroll via nearest `overflow-y:auto` ancestor. CSS module class names (`index_bodyViewport`, `index_tableRow`) may change — `tr[data-index]` and `/jobs/info/` href are stable. If 0 jobs, check if `tr[data-index]` still exists on the embed page. | 2026-04 |
+| Google for Jobs | `playwright_jobs.py` | ✅ | Added 2026-04: DOM scraper on the aggregator vertical `google.com/search?...&ibp=htl;jobs`. **High risk** — Google actively fights scrapers, recaptcha can fire, DOM obfuscated. Uses only semantic selectors (`role=list`, `role=listitem`, `role=heading`, `aria-level`). Cookie-consent interstitial is auto-dismissed by `_dismiss_consent_if_needed()` (clicks "Reject all" / "Accept all" / "I agree"). If 0 jobs: (1) open URL in DevTools and confirm cards still wrap in `[role="listitem"]`; (2) if consent-dismiss WARN fires, the consent page button labels may have changed — re-verify the button selectors; (3) if `/sorry/` challenge fires, disable temporarily via `PLAYWRIGHT_JOBS_ENABLED["google_jobs"] = False`. Tripwire: >30% empty-company → self-aborts with WARN. **If this repeatedly breaks, disable permanently — aggregator overlaps 80%+ with existing ATS scrapers.** | 2026-04 |
 
 **How to spot a broken scraper:** `main.py` now logs `[scraper_name] N jobs returned, M new` for every run. A scraper returning 0 that used to return results is a signal to investigate.
 
@@ -475,7 +479,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 - **launchd fires every 5 min** — each scraper self-regulates via `SCRAPER_INTERVALS`
 - **Tier 1, 2, 3 all bypass `LOCATIONS_INCLUDE`** — Greenhouse/Lever pass `tier="big_tech"` (same as Tier 2/3); all are curated company lists where you want all intern postings regardless of location. Location filter only applies to community (HN) and public sector tiers.
 - **`BIG_TECH_ENABLED` = Tier 2 JSON API scrapers only** (Amazon, Google, Microsoft, Apple, Uber) — Apple and Google are `False`; both moved to Playwright
-- **`PLAYWRIGHT_JOBS_ENABLED` = Meta, YC, Google, Apple, Uber** (Tesla disabled 2026-04 — Cloudflare blocking)
+- **`PLAYWRIGHT_JOBS_ENABLED` = Meta, YC, Google (careers.google.com), Apple, Uber, intern_list, google_jobs (aggregator)** (Tesla disabled 2026-04 — Cloudflare blocking)
 - **Tier 1–3 are stdlib only** — zero pip installs (except certifi for macOS SSL); YC moved from Tier 3 to Tier 4 (Playwright) in 2026-04 when `/jobs.json` was deprecated
 - **Playwright is optional** — Tier 4 scrapers skip gracefully if not installed
 - **No LinkedIn automated messaging** — find and log only, all outreach manual
@@ -510,6 +514,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 - **City of Toronto URL changed 2026-04** — old `toronto.ca/city-government/...` is 404; scraper now uses `jobs.toronto.ca/jobsatcity/search/?q=intern` with `a[href*='/job/']` selector.
 - **main.py per-scraper logging** — each scraper now prints `[name] N jobs returned, M new` every run for diagnostics.
 - **intern-list.com added 2026-04** — DOM scraper on Jobright embed pages. The `?k=swe` landing page embeds jobright.ai iframes (not Airtable); the Canada tab also loads via `jobright.ai/minisites-jobs/intern/ca/swe?embed=true`. Navigates directly to the iframe URLs to avoid tab interactions. Table uses virtual scroll — only ~22 rows visible at a time; scrolling the nearest `overflow-y:auto` ancestor loads more. Row selector `tr[data-index]` is stable (data attribute); CSS module class names on cells are obfuscated and may change. Job URLs: `jobright.ai/jobs/info/{id}` (UTM params stripped). Returns ~900 jobs (US + Canada combined). `tier="github"` — aggregate curated board, same as SimplifyJobs; location filter bypassed.
+- **Google for Jobs aggregator added 2026-04** — separate from `careers.google.com` (`PLAYWRIGHT_JOBS_ENABLED["google"]`). This scrapes the Google Search vertical at `google.com/search?q=...&ibp=htl;jobs`, which indexes `JobPosting` schema.org markup across the web. Three SWE-intern query variants looped: `software engineering intern`, `software internship`, `software developer intern`. No explicit location param — Google geo-biases off the request IP; adding `&location=` narrows unpredictably. **Selectors are semantic only** (`role=list` / `role=listitem` / `[role="heading"][aria-level="3"]`) because Google's CSS classnames are obfuscated and change on deploys. Cards carry title + company + location in their inner text; clicking a card renders the right-hand detail pane containing "Apply on {source}" links. Apply-URL priority: (1) hostname matches company name → (2) non-aggregator host → (3) first link. Aggregator hosts demoted: `linkedin.com`, `indeed.com`, `glassdoor.com`, `ziprecruiter.com`, `simplyhired.com`. **Cookie-consent handling**: fresh Playwright contexts have no `CONSENT` cookie, so Google serves the "Before you continue to Google Search" interstitial on first load. `_dismiss_consent_if_needed()` clicks "Reject all" (privacy-friendly; falls back to "Accept all" / "I agree" / aria-label variants) and waits for navigation. Only bails when: `/sorry/` challenge URL, recaptcha iframe, "unusual traffic" body text, OR consent page shown but no dismiss button could be clicked. Fragility tripwire: if >30% of harvested cards have empty company, selectors drifted → WARN + return []. `tier="github"` bypasses `LOCATIONS_INCLUDE` (aggregator like SimplifyJobs). **4-hour `SCRAPER_INTERVALS` entry** — longer than other Playwright scrapers to minimize Google bot-detection exposure of the residential IP. Expected heavy overlap with existing ATS scrapers; same MD5 dedup key includes source+company+title+url, so the same posting can trigger two emails via different URLs (e.g., company career page + Google Jobs apply link) — acceptable cost. If recaptcha ever fires repeatedly, flip to `False` and rely on existing scrapers.
 
 ---
 

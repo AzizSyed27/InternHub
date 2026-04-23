@@ -151,6 +151,7 @@ PLAYWRIGHT_JOBS_ENABLED = {
     "apple":       True,   # Playwright DOM scraper — /api/role/search (big_tech.py) is 404; /api/v1/search requires CSRF auth headless can't fulfill
     "uber":        True,   # Playwright response interceptor — jobs.uber.com blocked by Cloudflare; www.uber.com accessible
     "intern_list": True,   # DOM scraper on jobright.ai embed pages — both US and Canada SWE intern tabs; added 2026-04
+    "google_jobs": True,   # Google for Jobs aggregator (google.com/search?...&ibp=htl;jobs). 4-hour interval (SCRAPER_INTERVALS) to limit bot-detection exposure. Flip to False if recaptcha ever fires.
 }
 
 # ---------------------------------------------------------------------------
@@ -297,6 +298,7 @@ SCRAPER_INTERVALS = {
     "apple":          30,
     "uber":           30,
     "intern_list":    30,
+    "google_jobs":    240,  # 4 hours — minimize Google bot-detection exposure
     "govt_canada":    240,
     "ontario_public": 240,
     "opg":            360,

@@ -21,10 +21,20 @@
 # Uber: Response interceptor on www.uber.com/ca/en/careers/list/ (SPA).
 # jobs.uber.com is Cloudflare-blocked; www.uber.com is accessible.
 #
+# Google for Jobs: DOM scraper on google.com/search?...&ibp=htl;jobs — the
+# aggregator vertical, NOT careers.google.com (which is _scrape_google).
+# Iterates a short list of SWE-intern query variants, clicks each card to
+# read the detail pane, and picks the "Apply on {company domain}" link. Uses
+# only semantic selectors (role=, aria-*) because classnames are obfuscated.
+# Bails on recaptcha / consent interstitials without retrying. Default ON
+# but gated at a 4-hour interval to minimize bot-detection exposure.
+#
 # Requires: pip install playwright && playwright install chromium
 # If Playwright is not installed, this scraper logs a warning and returns [].
 #
 # Each company scraper is gated by PLAYWRIGHT_JOBS_ENABLED in config.py.
+
+from urllib.parse import urlparse
 
 from tracker.config import PLAYWRIGHT_JOBS_ENABLED
 from tracker.filters import make_job_id, passes_filters
@@ -96,6 +106,12 @@ def scrape() -> list[Job]:
                 jobs.extend(_scrape_intern_list(page))
             except Exception as exc:
                 print(f"[playwright_jobs/intern_list] WARNING: {exc}")
+
+        if PLAYWRIGHT_JOBS_ENABLED.get("google_jobs"):
+            try:
+                jobs.extend(_scrape_google_jobs(page))
+            except Exception as exc:
+                print(f"[playwright_jobs/google_jobs] WARNING: {exc}")
 
         browser.close()
     return jobs
@@ -510,10 +526,20 @@ def _scrape_intern_list(page) -> list[Job]:
     _MAX_SCROLL_ROUNDS = 30
 
     jobs: list[Job] = []
-    seen_hrefs: set[str] = set()
 
     for embed_url in _EMBED_URLS:
-        page.goto(embed_url, wait_until="networkidle", timeout=30000)
+        # Per-URL dedup set: the US and CA pages can share hrefs for the same
+        # posting, and a shared set would silently drop Canadian rows whose
+        # href was already seen on the US pass, plus trip the scroll-loop
+        # early-exit on a viewport of US-duplicates before reaching Canada-only
+        # rows further down.
+        seen_hrefs: set[str] = set()
+
+        # wait_until="load" (not "networkidle") — jobright.ai holds persistent
+        # analytics connections similar to Apple/YC, so networkidle can 30s-
+        # timeout on one URL and poison the whole intern_list run. The
+        # wait_for_selector below handles the actual "rows visible" wait.
+        page.goto(embed_url, wait_until="load", timeout=30000)
         page.wait_for_selector("tr[data-index]", state="visible", timeout=15000)
         page.wait_for_timeout(1000)
 
@@ -565,7 +591,8 @@ def _scrape_intern_list(page) -> list[Job]:
                 const table = document.querySelector('tr[data-index]')?.closest('table');
                 let el = table?.parentElement;
                 while (el) {
-                    if (window.getComputedStyle(el).overflowY === 'auto') {
+                    const oy = window.getComputedStyle(el).overflowY;
+                    if (oy === 'auto' || oy === 'scroll') {
                         el.scrollTop = el.scrollHeight;
                         return;
                     }
@@ -578,10 +605,292 @@ def _scrape_intern_list(page) -> list[Job]:
             if len(seen_hrefs) == prev:
                 break  # no new rows loaded; reached end of virtual scroll
 
+        # Per-URL summary — useful signal if the CA pass starts returning 0
+        # hrefs (broken selector / page.goto timeout) which historically masked
+        # Canadian-only postings like RBC Global Asset Management (2026-04).
+        print(
+            f"[intern_list] {embed_url}: "
+            f"{len(seen_hrefs)} unique hrefs, {len(jobs)} jobs accumulated"
+        )
+
     if not jobs:
         print(
             "[playwright_jobs/intern_list] WARNING: 0 jobs found — "
             "check tr[data-index] selector on jobright.ai/minisites-jobs/intern/us/swe?embed=true"
+        )
+
+    return jobs
+
+
+def _scrape_google_jobs(page) -> list[Job]:
+    """
+    Scrape the Google for Jobs aggregator at google.com/search?...&ibp=htl;jobs.
+
+    NOT careers.google.com — that is `_scrape_google()` above, which covers only
+    Google's own postings. This scraper surfaces the aggregator vertical that
+    indexes JobPosting schema.org markup from across the web (company sites,
+    Greenhouse, Workday, LinkedIn, Indeed). Heavy overlap with existing ATS
+    scrapers is expected; marginal value is postings from small/mid companies
+    that are not individually integrated.
+
+    Strategy (confirmed 2026-04):
+      - Loops three SWE-intern query variants; dedupes by final apply URL
+      - Uses only semantic selectors (role=list, role=listitem, role=heading,
+        aria-level); Google's CSS classnames are obfuscated and churn often
+      - Reads title / company / location from each card's text (avoids the
+        fragile detail-pane walk). Location line typically looks like
+        "City, Region · via Source" — split on "·" to drop the via-suffix.
+      - Clicks the card to render the right-hand detail pane, then harvests
+        Apply links with aria-label or text containing "apply" and picks one
+        by priority: (1) company-domain match → (2) non-aggregator host →
+        (3) first available link. Aggregator hosts (LinkedIn, Indeed, etc.)
+        are deprioritized to prefer the company's own careers page.
+      - Bails on recaptcha / consent interstitials and returns []; does NOT
+        retry in-session so the IP does not get hammered.
+
+    Fragility tripwires:
+      - If >30% of harvested cards have empty company, selectors have drifted:
+        WARN and return [] rather than emitting low-quality postings.
+      - If 0 jobs total → WARN with hints for where to re-verify in DevTools.
+
+    Gated by PLAYWRIGHT_JOBS_ENABLED["google_jobs"]; runs on a 4-hour
+    SCRAPER_INTERVAL to minimize Google bot-detection exposure of the
+    residential IP. tier="github" bypasses LOCATIONS_INCLUDE — this is an
+    aggregator like SimplifyJobs / intern-list, not a Canada-filtered source.
+    """
+    _URL_TEMPLATE = "https://www.google.com/search?q={q}&ibp=htl;jobs"
+    _QUERIES = [
+        "software engineering intern",
+        "software internship",
+        "software developer intern",
+    ]
+    _MAX_SCROLL_ROUNDS = 8
+    _MAX_CARDS_PER_QUERY = 25
+    _AGGREGATOR_HOSTS = {
+        "linkedin.com", "www.linkedin.com",
+        "indeed.com", "www.indeed.com",
+        "glassdoor.com", "www.glassdoor.com",
+        "ziprecruiter.com", "www.ziprecruiter.com",
+        "simplyhired.com", "www.simplyhired.com",
+    }
+
+    def _is_challenge_page() -> bool:
+        """True for hard challenges only (recaptcha, /sorry/, 'unusual traffic').
+        Does NOT treat the cookie-consent interstitial as a challenge — that is
+        handled by _dismiss_consent_if_needed() below."""
+        try:
+            url = (page.url or "").lower()
+            if "/sorry/" in url:
+                return True
+            if page.locator('iframe[src*="recaptcha"]').count() > 0:
+                return True
+            body_text = (page.locator("body").inner_text(timeout=2000) or "").lower()
+            if "unusual traffic" in body_text:
+                return True
+        except Exception:
+            pass
+        return False
+
+    def _dismiss_consent_if_needed() -> bool:
+        """Google's 'Before you continue to Google Search' interstitial is shown
+        to fresh browser contexts without a CONSENT cookie. Click through it.
+        Returns True if consent was dismissed OR not shown; False if still blocked
+        after trying."""
+        try:
+            url = (page.url or "").lower()
+            body_text = (page.locator("body").inner_text(timeout=2000) or "").lower()
+        except Exception:
+            return True  # can't read — assume we're OK and let downstream checks fire
+
+        on_consent = "consent.google.com" in url or "before you continue" in body_text
+        if not on_consent:
+            return True
+
+        # Prefer "Reject all" (avoids tracking-cookie burden); fall back to Accept.
+        for selector in (
+            'button:has-text("Reject all")',
+            'button[aria-label="Reject all"]',
+            'button:has-text("Accept all")',
+            'button[aria-label="Accept all"]',
+            'button:has-text("I agree")',
+        ):
+            try:
+                btn = page.locator(selector).first
+                if btn.count() == 0 or not btn.is_visible():
+                    continue
+                btn.click(timeout=5000)
+                page.wait_for_load_state("load", timeout=15000)
+                page.wait_for_timeout(1500)
+                # Re-check: did we actually leave the consent page?
+                new_url = (page.url or "").lower()
+                if "consent.google.com" not in new_url:
+                    return True
+            except Exception:
+                continue
+
+        return False
+
+    def _pick_apply_url(urls: list[str], company: str) -> str:
+        if not urls:
+            return ""
+        company_slug = "".join(c for c in company.lower() if c.isalnum())
+        if company_slug:
+            for href in urls:
+                host_alnum = "".join(
+                    c for c in (urlparse(href).hostname or "").lower() if c.isalnum()
+                )
+                if company_slug in host_alnum:
+                    return href
+        for href in urls:
+            host = (urlparse(href).hostname or "").lower()
+            if host and host not in _AGGREGATOR_HOSTS:
+                return href
+        return urls[0]
+
+    jobs: list[Job] = []
+    seen_urls: set[str] = set()
+    empty_company = 0
+    total = 0
+
+    try:
+        page.set_extra_http_headers({"Accept-Language": "en-US,en;q=0.9"})
+    except Exception:
+        pass
+
+    for query in _QUERIES:
+        url = _URL_TEMPLATE.format(q=query.replace(" ", "+"))
+        try:
+            page.goto(url, wait_until="load", timeout=30000)
+        except Exception as exc:
+            print(f"[playwright_jobs/google_jobs] WARNING: goto failed for {query!r}: {exc}")
+            continue
+        page.wait_for_timeout(2500)
+
+        if not _dismiss_consent_if_needed():
+            print(
+                "[playwright_jobs/google_jobs] WARNING: consent interstitial could not be "
+                "dismissed (button selectors may have changed) — bailing."
+            )
+            return []
+
+        if _is_challenge_page():
+            print(
+                "[playwright_jobs/google_jobs] WARNING: bot challenge detected "
+                "(recaptcha / /sorry/ / unusual traffic) — bailing without retry."
+            )
+            return []
+
+        rail = page.locator('div[role="main"] [role="list"]').first
+        try:
+            rail.wait_for(state="visible", timeout=10000)
+        except Exception:
+            # No list rendered for this query — skip to next
+            continue
+
+        # Scroll the jobs rail until no new cards load or we hit the cap
+        for _ in range(_MAX_SCROLL_ROUNDS):
+            prev = rail.locator('[role="listitem"]').count()
+            try:
+                rail.evaluate("el => el.scrollTo(0, el.scrollHeight)")
+            except Exception:
+                break
+            page.wait_for_timeout(1500)
+            curr = rail.locator('[role="listitem"]').count()
+            if curr == prev or curr >= _MAX_CARDS_PER_QUERY:
+                break
+
+        cards = rail.locator('[role="listitem"]').all()[:_MAX_CARDS_PER_QUERY]
+        for card in cards:
+            try:
+                title_loc = card.locator('[role="heading"][aria-level="3"]').first
+                if title_loc.count() == 0:
+                    continue
+                title = title_loc.inner_text().strip()
+                if not title:
+                    continue
+
+                # Parse company + location from the card's visible text lines.
+                card_text = card.inner_text() or ""
+                lines = [ln.strip() for ln in card_text.splitlines() if ln.strip()]
+                t_idx = next((i for i, ln in enumerate(lines) if ln == title), 0)
+                company = ""
+                location = ""
+                for ln in lines[t_idx + 1 : t_idx + 4]:
+                    if not company:
+                        company = ln
+                        continue
+                    # Typical: "Mountain View, CA · via LinkedIn" → drop via-suffix
+                    location = ln.split("·")[0].strip() if "·" in ln else ln
+                    break
+
+                total += 1
+                if not company:
+                    empty_company += 1
+
+                try:
+                    card.click(timeout=5000)
+                    page.wait_for_timeout(1200)
+                except Exception:
+                    continue
+
+                if _is_challenge_page():
+                    print(
+                        "[playwright_jobs/google_jobs] WARNING: challenge detected mid-run — bailing"
+                    )
+                    return []
+
+                # Harvest apply links from whichever detail pane is now visible
+                apply_urls: list[str] = []
+                try:
+                    for a in page.locator('a[href^="http"]').all():
+                        try:
+                            aria = (a.get_attribute("aria-label") or "").lower()
+                            text = (a.inner_text() or "").lower()
+                        except Exception:
+                            continue
+                        if "apply" not in aria and "apply" not in text:
+                            continue
+                        href = a.get_attribute("href") or ""
+                        host = (urlparse(href).hostname or "").lower()
+                        if "google." in host:
+                            continue  # skip Google's own search/redirect links
+                        if href and href not in apply_urls:
+                            apply_urls.append(href)
+                except Exception:
+                    pass
+
+                job_url = _pick_apply_url(apply_urls, company)
+                if not job_url or job_url in seen_urls:
+                    continue
+                seen_urls.add(job_url)
+
+                job: Job = {
+                    "id": make_job_id("google_jobs", company or "unknown", title, job_url),
+                    "title": title,
+                    "company": company or "unknown",
+                    "location": location,
+                    "url": job_url,
+                    "date_posted": "",
+                    "description": "",
+                    "source": "Google Jobs",
+                }
+                if passes_filters(job, "github"):
+                    jobs.append(job)
+            except Exception:
+                continue
+
+    # Fragility tripwire — detail/card selectors have drifted.
+    if total >= 10 and (empty_company / total) > 0.3:
+        print(
+            f"[playwright_jobs/google_jobs] WARNING: {empty_company}/{total} cards had empty "
+            "company — card selectors likely drifted. Returning []."
+        )
+        return []
+
+    if not jobs:
+        print(
+            "[playwright_jobs/google_jobs] WARNING: 0 jobs — verify role=list / role=listitem "
+            "still wrap cards on google.com/search?...&ibp=htl;jobs or check for challenge page."
         )
 
     return jobs

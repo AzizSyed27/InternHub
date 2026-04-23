@@ -32,8 +32,8 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>YOUR_PYTHON_PATH</string>
-        <string>YOUR_REPO_PATH/tracker/main.py</string>
+        <string>/Library/Frameworks/Python.framework/Versions/3.14/bin/python3</string>
+        <string>/Users/azizsyed/Desktop/Projects/InternHub/internhub/tracker/main.py</string>
     </array>
 
     <!-- Fire every 300 seconds (5 minutes) -->
@@ -46,13 +46,13 @@
 
     <!-- Working directory — main.py uses relative paths for seen_jobs.json -->
     <key>WorkingDirectory</key>
-    <string>YOUR_REPO_PATH</string>
+    <string>/Users/azizsyed/Desktop/Projects/InternHub/internhub</string>
 
     <!-- Log stdout and stderr to files in the repo -->
     <key>StandardOutPath</key>
-    <string>YOUR_REPO_PATH/tracker/tracker.log</string>
+    <string>/Users/azizsyed/Desktop/Projects/InternHub/internhub/tracker/tracker.log</string>
 
     <key>StandardErrorPath</key>
-    <string>YOUR_REPO_PATH/tracker/tracker_error.log</string>
+    <string>/Users/azizsyed/Desktop/Projects/InternHub/internhub/tracker/tracker_error.log</string>
 </dict>
 </plist>
