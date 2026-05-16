@@ -152,6 +152,7 @@ PLAYWRIGHT_JOBS_ENABLED = {
     "uber":        True,   # Playwright response interceptor — jobs.uber.com blocked by Cloudflare; www.uber.com accessible
     "intern_list": True,   # DOM scraper on jobright.ai embed pages — both US and Canada SWE intern tabs; added 2026-04
     "google_jobs": True,   # Google for Jobs aggregator (google.com/search?...&ibp=htl;jobs). 4-hour interval (SCRAPER_INTERVALS) to limit bot-detection exposure. Flip to False if recaptcha ever fires.
+    "amazon_university": True,  # Amazon university/student-programs internships SPA — search.json silently ignores the Intern/US/category facets, so the JS-rendered amazon.jobs/en/search?...&category_type=studentprograms page is the only source; added 2026-05
 }
 
 # ---------------------------------------------------------------------------
@@ -243,6 +244,8 @@ KEYWORDS_INCLUDE = [
 KEYWORDS_EXCLUDE = [
     "senior",
     "staff",
+    "phd",
+    "robotics"
     "principal",
     "lead",    # title-only check — avoids false positives on "leadership" in descriptions
     "manager",
@@ -299,6 +302,7 @@ SCRAPER_INTERVALS = {
     "uber":           30,
     "intern_list":    30,
     "google_jobs":    240,  # 4 hours — minimize Google bot-detection exposure
+    "amazon_university": 30,  # same cadence as meta/apple/uber Playwright scrapers
     "govt_canada":    240,
     "ontario_public": 240,
     "opg":            360,

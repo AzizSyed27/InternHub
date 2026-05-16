@@ -117,6 +117,7 @@ def _load_scrapers() -> dict:
             SCRAPER_INTERVALS.get("apple", 30),
             SCRAPER_INTERVALS.get("uber", 30),
             SCRAPER_INTERVALS.get("intern_list", 30),
+            SCRAPER_INTERVALS.get("amazon_university", 30),
         )
 
     return scrapers
