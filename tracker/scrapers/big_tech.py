@@ -34,11 +34,12 @@ _HEADERS = {
 def scrape() -> list[Job]:
     all_jobs: list[Job] = []
     scrapers = {
-        "amazon":    _scrape_amazon,
-        "google":    _scrape_google,
-        "microsoft": _scrape_microsoft,
-        "apple":     _scrape_apple,
-        "uber":      _scrape_uber,
+        "amazon":            _scrape_amazon,
+        "amazon_university": _scrape_amazon_university,
+        "google":            _scrape_google,
+        "microsoft":         _scrape_microsoft,
+        "apple":             _scrape_apple,
+        "uber":              _scrape_uber,
     }
     for name, fn in scrapers.items():
         if not BIG_TECH_ENABLED.get(name):
@@ -68,6 +69,21 @@ def scrape() -> list[Job]:
 _AMAZON_QUERIES = ["software intern", "software internship"]
 
 
+def _parse_amazon_date(s: str) -> str:
+    """Amazon's search.json posted_date is a human string like
+    "April 29, 2026" (single-digit days may be double-spaced: "May  7, 2026").
+    Return ISO "YYYY-MM-DD", or "" if empty/unparseable. Do NOT slice it —
+    posted[:10] yields garbage like "April 29, " / "May  7, 20"."""
+    if not s:
+        return ""
+    try:
+        # collapse the double-space single-digit-day case → "May 7, 2026"
+        normalized = " ".join(s.split())
+        return datetime.strptime(normalized, "%B %d, %Y").strftime("%Y-%m-%d")
+    except (ValueError, TypeError):
+        return ""
+
+
 def _scrape_amazon() -> list[Job]:
     jobs: list[Job] = []
     seen_urls: set[str] = set()
@@ -95,7 +111,7 @@ def _scrape_amazon() -> list[Job]:
                     "company": "Amazon",
                     "location": loc,
                     "url": job_url,
-                    "date_posted": posted[:10] if posted else "",
+                    "date_posted": _parse_amazon_date(posted),
                     "description": description[:500],
                     "source": "BigTech",
                 }
@@ -104,6 +120,78 @@ def _scrape_amazon() -> list[Job]:
                     jobs.append(job)
         except Exception as exc:
             print(f"[big_tech/amazon] WARNING: query={query!r}: {exc}")
+    return jobs
+
+
+# ---------------------------------------------------------------------------
+# Amazon University / Student Programs
+#
+# Amazon's user-facing page
+#   amazon.jobs/content/en/career-programs/university/internships-for-students
+# is a marketing landing page (no postings). Its search SPA calls the SAME
+# search.json endpoint as _scrape_amazon, but with the FACET params
+# `business_category[]=studentprograms` + `normalized_country_code[]=USA` +
+# `category[]=Software Development`. These facets ARE honored by the API
+# (verified 2026-05) — unlike `category_type` / `country`, which are silently
+# ignored. So this is a plain stdlib JSON scraper, no Playwright needed.
+#
+# Uses make_job_id("amazon", ...) — same source_prefix as _scrape_amazon — so a
+# posting surfaced by both the keyword search and the student-programs facet
+# dedups to one ID and triggers only one email.
+# ---------------------------------------------------------------------------
+
+def _scrape_amazon_university() -> list[Job]:
+    jobs: list[Job] = []
+    seen_urls: set[str] = set()
+    offset = 0
+    page_size = 100
+    while True:
+        try:
+            params = urllib.parse.urlencode([
+                ("business_category[]", "studentprograms"),
+                ("normalized_country_code[]", "USA"),
+                ("category[]", "Software Development"),
+                ("result_limit", page_size),
+                ("offset", offset),
+                ("sort", "recent"),
+            ])
+            url = f"https://www.amazon.jobs/en/search.json?{params}"
+            req = urllib.request.Request(url, headers=_HEADERS)
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read().decode())
+        except Exception as exc:
+            print(f"[big_tech/amazon_university] WARNING: offset={offset}: {exc}")
+            break
+
+        batch = data.get("jobs", [])
+        if not batch:
+            break
+        for job_item in batch:
+            title = job_item.get("title", "")
+            job_url = "https://www.amazon.jobs" + job_item.get("job_path", "")
+            loc = job_item.get("normalized_location", "") or job_item.get("location", "") or ""
+            description = job_item.get("description_short", "") or ""
+            posted = job_item.get("posted_date", "") or ""
+            job: Job = {
+                "id": make_job_id("amazon", "Amazon", title, job_url),
+                "title": title,
+                "company": "Amazon",
+                "location": loc,
+                "url": job_url,
+                "date_posted": _parse_amazon_date(posted),
+                "description": description[:500],
+                "source": "BigTech",
+            }
+            if job["url"] not in seen_urls and passes_filters(job, "big_tech"):
+                seen_urls.add(job["url"])
+                jobs.append(job)
+
+        # "hits" is an integer total (Amazon schema, 2026-04). Paginate until
+        # we've walked all hits or a short page signals the last batch.
+        total = data.get("hits", 0)
+        offset += len(batch)
+        if len(batch) < page_size or (isinstance(total, int) and offset >= total):
+            break
     return jobs
 
 

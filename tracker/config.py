@@ -132,6 +132,7 @@ WORKDAY_COMPANIES = {
 # ---------------------------------------------------------------------------
 BIG_TECH_ENABLED = {
     "amazon":    True,
+    "amazon_university": True,  # Amazon university/student-programs internships via search.json with business_category[]=studentprograms + normalized_country_code[]=USA facets (these ARE honored, unlike category_type/country); added 2026-05
     "google":    False,  # Public API deprecated as of 2026-04 — no replacement without authentication
     "microsoft": True,   # Eightfold API — microsoftai.eightfold.ai/api/apply/v2/jobs — confirmed 2026-04
     "apple":     False,  # No public JSON API — jobs.apple.com/api/role/search does not exist; use Playwright instead
@@ -152,7 +153,6 @@ PLAYWRIGHT_JOBS_ENABLED = {
     "uber":        True,   # Playwright response interceptor — jobs.uber.com blocked by Cloudflare; www.uber.com accessible
     "intern_list": True,   # DOM scraper on jobright.ai embed pages — both US and Canada SWE intern tabs; added 2026-04
     "google_jobs": True,   # Google for Jobs aggregator (google.com/search?...&ibp=htl;jobs). 4-hour interval (SCRAPER_INTERVALS) to limit bot-detection exposure. Flip to False if recaptcha ever fires.
-    "amazon_university": True,  # Amazon university/student-programs internships SPA — search.json silently ignores the Intern/US/category facets, so the JS-rendered amazon.jobs/en/search?...&category_type=studentprograms page is the only source; added 2026-05
 }
 
 # ---------------------------------------------------------------------------
@@ -302,7 +302,6 @@ SCRAPER_INTERVALS = {
     "uber":           30,
     "intern_list":    30,
     "google_jobs":    240,  # 4 hours — minimize Google bot-detection exposure
-    "amazon_university": 30,  # same cadence as meta/apple/uber Playwright scrapers
     "govt_canada":    240,
     "ontario_public": 240,
     "opg":            360,
