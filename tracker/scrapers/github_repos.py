@@ -95,7 +95,13 @@ def _parse_markdown_table(content: str) -> list[list[dict]]:
         cells_raw = [c.strip() for c in stripped[1:-1].split("|")]
         cells = []
         for raw in cells_raw:
-            links = re.findall(r'\[.*?\]\((https?://[^)]+)\)', raw)
+            # Linked badge images [![alt](img-url)](actual-url) — capture the outer apply URL
+            linked_image_links = re.findall(r'\[!\[.*?\]\([^)]*\)\]\((https?://[^)]+)\)', raw)
+            # Remove linked-image patterns before extracting plain links, so the inner
+            # [alt](img-url) substring is not mistakenly captured as a regular link
+            cleaned = re.sub(r'\[!\[.*?\]\([^)]*\)\]\([^)]*\)', '', raw)
+            regular_links = re.findall(r'(?<!!)\[(?!!)[^\]]*\]\((https?://[^)]+)\)', cleaned)
+            links = linked_image_links + regular_links
             text = re.sub(r'\[([^\]]*)\]\([^)]*\)', r'\1', raw).strip()
             cells.append({"text": text, "links": links})
         if cells:
